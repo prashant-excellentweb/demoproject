@@ -1,0 +1,983 @@
+openapi: 3.0.3
+info:
+  title: ChatApp API
+  version: 1.0.0
+  description: "\nWhatsApp-clone REST API for Flutter/mobile clients.\n\n## Authentication\n1.
+    `POST /api/auth/send-otp/` — send OTP to phone (no auth)\n2. `POST /api/auth/verify-otp/`
+    — verify OTP, receive JWT `access` + `refresh` tokens\n3. Send header on all protected
+    routes: `Authorization: Bearer <access_token>`\n4. `POST /api/auth/token/refresh/`
+    — refresh access token\n\n## WebSocket (real-time chat)\n- URL: `ws://<host>:8000/ws/chat/?token=<access_token>`\n-
+    Actions (JSON): `join_conversation`, `leave_conversation`, `typing`, `mark_read`\n-
+    Events received: `message`, `typing`, `read`\n\n## Media uploads\nUse `multipart/form-data`
+    for messages, profile avatar, and status media.\n    "
+paths:
+  /api/auth/logout/:
+    post:
+      operationId: auth_logout_create
+      description: Marks user as offline and updates last_seen.
+      summary: Logout
+      tags:
+      - Auth
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+  /api/auth/profile/:
+    get:
+      operationId: auth_profile_retrieve
+      summary: Get current user profile
+      tags:
+      - Auth
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+    patch:
+      operationId: auth_profile_partial_update
+      description: Update display name, about, and/or avatar. Use multipart/form-data
+        when uploading avatar.
+      summary: Update profile
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedProfileUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedProfileUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedProfileUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+  /api/auth/search/:
+    get:
+      operationId: auth_search_list
+      description: Search registered users by display name or phone number (min 2
+        characters).
+      summary: Search users
+      parameters:
+      - in: query
+        name: q
+        schema:
+          type: string
+        required: true
+      tags:
+      - Auth
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserPublic'
+          description: ''
+  /api/auth/send-otp/:
+    post:
+      operationId: auth_send_otp_create
+      description: Send a 6-digit OTP to the given phone number. In dev mode OTP is
+        printed in server logs.
+      summary: Send OTP via SMS
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendOTPRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SendOTPRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SendOTPRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendOTPResponse'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+  /api/auth/token/refresh/:
+    post:
+      operationId: auth_token_refresh_create
+      description: Exchange a valid refresh token for a new access token.
+      summary: Refresh JWT access token
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequestRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefreshResponse'
+          description: ''
+  /api/auth/users/{user_id}/:
+    get:
+      operationId: auth_users_retrieve
+      summary: Get user by ID
+      parameters:
+      - in: path
+        name: user_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Auth
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPublic'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+  /api/auth/verify-otp/:
+    post:
+      operationId: auth_verify_otp_create
+      description: Verify OTP code. Returns JWT tokens and user profile. Creates account
+        if new phone number.
+      summary: Verify OTP and login
+      tags:
+      - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOTPRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VerifyOTPRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VerifyOTPRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokenResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+  /api/chat/conversations/:
+    get:
+      operationId: chat_conversations_list
+      description: All conversations for the current user with last message and unread
+        count.
+      summary: List conversations
+      tags:
+      - Chat
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Conversation'
+          description: ''
+  /api/chat/conversations/{conversation_id}/messages/:
+    get:
+      operationId: chat_conversations_messages_list
+      description: Paginated messages for a conversation (latest 50). Marks messages
+        as read.
+      summary: Get messages
+      parameters:
+      - in: query
+        name: before
+        schema:
+          type: integer
+        description: Message ID — load messages older than this (infinite scroll)
+      - in: path
+        name: conversation_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Chat
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Message'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+  /api/chat/conversations/{conversation_id}/read/:
+    post:
+      operationId: chat_conversations_read_create
+      summary: Mark conversation as read
+      parameters:
+      - in: path
+        name: conversation_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Chat
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+  /api/chat/conversations/{conversation_id}/send/:
+    post:
+      operationId: chat_conversations_send_create
+      description: |-
+        Send text or media message. Use multipart/form-data.
+
+        **message_type:** text | image | video | pdf | document | audio
+
+        For media types, include `file`. For text, include `content`.
+      summary: Send message
+      parameters:
+      - in: path
+        name: conversation_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Chat
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+  /api/chat/conversations/direct/:
+    post:
+      operationId: chat_conversations_direct_create
+      description: Create or return existing 1:1 conversation with another user.
+      summary: Start direct chat
+      tags:
+      - Chat
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDirectChatRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreateDirectChatRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateDirectChatRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+  /api/chat/conversations/group/:
+    post:
+      operationId: chat_conversations_group_create
+      summary: Create group chat
+      tags:
+      - Chat
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreateGroupRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateGroupRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+          description: ''
+  /api/stories/{status_id}/delete/:
+    delete:
+      operationId: stories_delete_destroy
+      summary: Delete own status
+      parameters:
+      - in: path
+        name: status_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Stories
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+  /api/stories/{status_id}/view/:
+    post:
+      operationId: stories_view_create
+      summary: Mark status as viewed
+      parameters:
+      - in: path
+        name: status_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Stories
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+  /api/stories/{status_id}/viewers/:
+    get:
+      operationId: stories_viewers_list
+      description: Only the status owner can see who viewed their status.
+      summary: List status viewers
+      parameters:
+      - in: path
+        name: status_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Stories
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserPublic'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailResponse'
+          description: ''
+  /api/stories/create/:
+    post:
+      operationId: stories_create_create
+      description: |-
+        Post a 24-hour status. Use multipart/form-data.
+
+        **status_type:** text | image | video
+
+        Text: `content` + optional `background_color`. Image/video: `media` file.
+      summary: Create status
+      tags:
+      - Stories
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateStatusRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CreateStatusRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+          description: ''
+  /api/stories/feed/:
+    get:
+      operationId: stories_feed_retrieve
+      description: My statuses plus contacts' statuses grouped by user (WhatsApp-style
+        stories bar).
+      summary: Status feed
+      tags:
+      - Stories
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusFeedResponse'
+          description: ''
+components:
+  schemas:
+    AuthTokenResponse:
+      type: object
+      properties:
+        access:
+          type: string
+          description: JWT access token — use in Authorization header
+        refresh:
+          type: string
+          description: JWT refresh token
+        user:
+          $ref: '#/components/schemas/User'
+        is_new_user:
+          type: boolean
+      required:
+      - access
+      - is_new_user
+      - refresh
+      - user
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserPublic'
+          readOnly: true
+        is_group:
+          type: boolean
+        group_name:
+          type: string
+          maxLength: 100
+        group_avatar:
+          type: string
+          format: uri
+          nullable: true
+        group_avatar_url:
+          type: string
+          readOnly: true
+        last_message:
+          type: string
+          readOnly: true
+        unread_count:
+          type: integer
+          readOnly: true
+          default: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - group_avatar_url
+      - id
+      - last_message
+      - participants
+      - unread_count
+      - updated_at
+    CreateDirectChatRequest:
+      type: object
+      properties:
+        user_id:
+          type: integer
+      required:
+      - user_id
+    CreateGroupRequest:
+      type: object
+      properties:
+        group_name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        participant_ids:
+          type: array
+          items:
+            type: integer
+          minItems: 1
+      required:
+      - group_name
+      - participant_ids
+    CreateStatusRequest:
+      type: object
+      properties:
+        status_type:
+          $ref: '#/components/schemas/StatusTypeEnum'
+        content:
+          type: string
+          default: ''
+        media:
+          type: string
+          format: binary
+          nullable: true
+        background_color:
+          type: string
+          minLength: 1
+          default: '#075E54'
+          maxLength: 7
+      required:
+      - status_type
+    DetailResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+      required:
+      - detail
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        conversation:
+          type: integer
+        sender:
+          allOf:
+          - $ref: '#/components/schemas/UserPublic'
+          readOnly: true
+        message_type:
+          $ref: '#/components/schemas/MessageTypeEnum'
+        content:
+          type: string
+        file:
+          type: string
+          format: uri
+          nullable: true
+        file_url:
+          type: string
+          readOnly: true
+        file_name:
+          type: string
+          maxLength: 255
+        file_size:
+          type: integer
+          readOnly: true
+        is_read:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - conversation
+      - created_at
+      - file_size
+      - file_url
+      - id
+      - is_read
+      - sender
+    MessageTypeEnum:
+      enum:
+      - text
+      - image
+      - video
+      - pdf
+      - document
+      - audio
+      type: string
+      description: |-
+        * `text` - Text
+        * `image` - Image
+        * `video` - Video
+        * `pdf` - PDF
+        * `document` - Document
+        * `audio` - Audio
+    PatchedProfileUpdateRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          maxLength: 100
+        about:
+          type: string
+          minLength: 1
+          maxLength: 255
+        avatar:
+          type: string
+          format: binary
+          nullable: true
+    SendMessageRequest:
+      type: object
+      properties:
+        content:
+          type: string
+          default: ''
+        message_type:
+          allOf:
+          - $ref: '#/components/schemas/MessageTypeEnum'
+          default: text
+        file:
+          type: string
+          format: binary
+          nullable: true
+    SendOTPRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+          maxLength: 20
+      required:
+      - phone_number
+    SendOTPResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+        phone_number:
+          type: string
+      required:
+      - detail
+      - phone_number
+    Status:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        user:
+          allOf:
+          - $ref: '#/components/schemas/UserPublic'
+          readOnly: true
+        status_type:
+          $ref: '#/components/schemas/StatusTypeEnum'
+        content:
+          type: string
+        media:
+          type: string
+          format: uri
+          nullable: true
+        media_url:
+          type: string
+          readOnly: true
+        background_color:
+          type: string
+          maxLength: 7
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        expires_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_viewed:
+          type: string
+          readOnly: true
+        view_count:
+          type: string
+          readOnly: true
+      required:
+      - created_at
+      - expires_at
+      - id
+      - is_viewed
+      - media_url
+      - user
+      - view_count
+    StatusFeedResponse:
+      type: object
+      properties:
+        my_statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Status'
+        contacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusGroup'
+      required:
+      - contacts
+      - my_statuses
+    StatusGroup:
+      type: object
+      description: Grouped statuses by user for the stories UI.
+      properties:
+        user:
+          $ref: '#/components/schemas/UserPublic'
+        statuses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Status'
+        has_unviewed:
+          type: boolean
+        latest_at:
+          type: string
+          format: date-time
+      required:
+      - has_unviewed
+      - latest_at
+      - statuses
+      - user
+    StatusTypeEnum:
+      enum:
+      - text
+      - image
+      - video
+      type: string
+      description: |-
+        * `text` - Text
+        * `image` - Image
+        * `video` - Video
+    TokenRefreshRequestRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          minLength: 1
+      required:
+      - refresh
+    TokenRefreshResponse:
+      type: object
+      properties:
+        access:
+          type: string
+        refresh:
+          type: string
+      required:
+      - access
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        phone_number:
+          type: string
+          readOnly: true
+        display_name:
+          type: string
+          maxLength: 100
+        about:
+          type: string
+          maxLength: 255
+        avatar:
+          type: string
+          format: uri
+          nullable: true
+        avatar_url:
+          type: string
+          readOnly: true
+        is_online:
+          type: boolean
+          readOnly: true
+        last_seen:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        date_joined:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - avatar_url
+      - date_joined
+      - id
+      - is_online
+      - last_seen
+      - phone_number
+    UserPublic:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        phone_number:
+          type: string
+          maxLength: 20
+        display_name:
+          type: string
+          maxLength: 100
+        about:
+          type: string
+          maxLength: 255
+        avatar_url:
+          type: string
+          readOnly: true
+        is_online:
+          type: boolean
+        last_seen:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - avatar_url
+      - id
+      - phone_number
+    VerifyOTPRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+          maxLength: 20
+        otp_code:
+          type: string
+          minLength: 6
+          maxLength: 6
+      required:
+      - otp_code
+      - phone_number
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+- name: Auth
+  description: SMS OTP login, profile, user search
+- name: Chat
+  description: Conversations and messages
+- name: Stories
+  description: Status/stories (24h expiry)

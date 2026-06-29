@@ -1,0 +1,13 @@
+Django>=5.0,<6.0
+djangorestframework>=3.15
+djangorestframework-simplejwt>=5.3
+django-cors-headers>=4.3
+channels>=4.1
+channels-redis>=4.2
+redis>=5.0
+Pillow>=10.0
+python-dotenv>=1.0
+twilio>=9.0
+django-filter>=24.0
+daphne>=4.1
+drf-spectacular>=0.27

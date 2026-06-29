@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./backend:/app
+      - media_data:/app/media
+    environment:
+      - DEBUG=True
+      - REDIS_URL=redis://redis:6379/0
+      - FRONTEND_URL=http://localhost:5173
+    depends_on:
+      - redis
+    command: >
+      sh -c "python manage.py migrate &&
+             daphne -b 0.0.0.0 -p 9000 config.asgi:application"
+
+volumes:
+  redis_data:
+  media_data:
