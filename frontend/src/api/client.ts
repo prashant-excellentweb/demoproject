@@ -1,4 +1,5 @@
 import axios, { type AxiosResponse } from "axios";
+import type { Conversation, Message, Status, StatusFeed, User } from "@/types";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -54,53 +55,53 @@ api.interceptors.response.use(
   }
 );
 
+export interface AuthTokenData {
+  access: string;
+  refresh: string;
+  user: User;
+  is_new_user: boolean;
+}
+
 export const authApi = {
   sendOtp: (phone_number: string) =>
-    api.post<ApiResponse<{ phone_number: string }>>("/auth/send-otp/", { phone_number }),
+    api.post<{ phone_number: string }>("/auth/send-otp/", { phone_number }),
   verifyOtp: (phone_number: string, otp_code: string) =>
-    api.post<ApiResponse<{ access: string; refresh: string; user: import("@/types").User; is_new_user: boolean }>>(
-      "/auth/verify-otp/",
-      { phone_number, otp_code }
-    ),
-  getProfile: () => api.get<ApiResponse<import("@/types").User>>("/auth/profile/"),
+    api.post<AuthTokenData>("/auth/verify-otp/", { phone_number, otp_code }),
+  getProfile: () => api.get<User>("/auth/profile/"),
   updateProfile: (data: FormData) =>
-    api.patch<ApiResponse<import("@/types").User>>("/auth/profile/", data, {
+    api.patch<User>("/auth/profile/", data, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
-  searchUsers: (q: string) =>
-    api.get<ApiResponse<import("@/types").User[]>>("/auth/search/", { params: { q } }),
-  logout: () => api.post<ApiResponse<null>>("/auth/logout/"),
+  searchUsers: (q: string) => api.get<User[]>("/auth/search/", { params: { q } }),
+  logout: () => api.post<null>("/auth/logout/"),
 };
 
 export const chatApi = {
-  getConversations: () => api.get<ApiResponse<import("@/types").Conversation[]>>("/chat/conversations/"),
+  getConversations: () => api.get<Conversation[]>("/chat/conversations/"),
   createDirectChat: (user_id: number) =>
-    api.post<ApiResponse<import("@/types").Conversation>>("/chat/conversations/direct/", { user_id }),
+    api.post<Conversation>("/chat/conversations/direct/", { user_id }),
   createGroup: (group_name: string, participant_ids: number[]) =>
-    api.post<ApiResponse<import("@/types").Conversation>>("/chat/conversations/group/", {
-      group_name,
-      participant_ids,
-    }),
+    api.post<Conversation>("/chat/conversations/group/", { group_name, participant_ids }),
   getMessages: (conversationId: number, before?: number) =>
-    api.get<ApiResponse<import("@/types").Message[]>>(`/chat/conversations/${conversationId}/messages/`, {
+    api.get<Message[]>(`/chat/conversations/${conversationId}/messages/`, {
       params: before ? { before } : {},
     }),
   sendMessage: (conversationId: number, data: FormData) =>
-    api.post<ApiResponse<import("@/types").Message>>(`/chat/conversations/${conversationId}/send/`, data, {
+    api.post<Message>(`/chat/conversations/${conversationId}/send/`, data, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
   markRead: (conversationId: number) =>
-    api.post<ApiResponse<null>>(`/chat/conversations/${conversationId}/read/`),
+    api.post<null>(`/chat/conversations/${conversationId}/read/`),
 };
 
 export const storiesApi = {
-  getFeed: () => api.get<ApiResponse<import("@/types").StatusFeed>>("/stories/feed/"),
+  getFeed: () => api.get<StatusFeed>("/stories/feed/"),
   createStatus: (data: FormData) =>
-    api.post<ApiResponse<import("@/types").Status>>("/stories/create/", data, {
+    api.post<Status>("/stories/create/", data, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
-  viewStatus: (statusId: number) => api.post<ApiResponse<null>>(`/stories/${statusId}/view/`),
-  deleteStatus: (statusId: number) => api.delete<ApiResponse<null>>(`/stories/${statusId}/delete/`),
+  viewStatus: (statusId: number) => api.post<null>(`/stories/${statusId}/view/`),
+  deleteStatus: (statusId: number) => api.delete<null>(`/stories/${statusId}/delete/`),
 };
 
 export default api;

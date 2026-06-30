@@ -11,4 +11,4 @@ if (-not (Test-Path .\db.sqlite3)) {
 }
 Write-Host "Backend starting at http://localhost:9000"
 Write-Host "Swagger UI: http://localhost:9000/api/docs/"
-daphne -b 0.0.0.0 -p 9000 config.asgi:application
+daphne -b 192.168.1.222 -p 9000 config.asgi:application
