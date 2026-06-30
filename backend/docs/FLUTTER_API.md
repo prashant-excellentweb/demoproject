@@ -1,5 +1,43 @@
 # ChatApp API — Flutter Integration Guide
 
+## Standard response (every API)
+
+```json
+{
+  "success": true,
+  "message": "Success message",
+  "data": { }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | boolean | `true` = OK, `false` = error |
+| `message` | string | Human-readable status |
+| `data` | object/array/null | Actual payload |
+
+**Error example:**
+```json
+{
+  "success": false,
+  "message": "Invalid or expired OTP.",
+  "data": null
+}
+```
+
+**Validation error:**
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "data": { "phone_number": ["Enter a valid phone number."] }
+}
+```
+
+Always read `success` first, then `message`, then `data`.
+
+---
+
 ## Swagger / OpenAPI
 
 | Resource | URL |
@@ -51,10 +89,14 @@ POST /auth/verify-otp/
 **Response:**
 ```json
 {
-  "access": "eyJ...",
-  "refresh": "eyJ...",
-  "user": { "id": 1, "phone_number": "+1234567890", "display_name": "", ... },
-  "is_new_user": true
+  "success": true,
+  "message": "Login successful.",
+  "data": {
+    "access": "eyJ...",
+    "refresh": "eyJ...",
+    "user": { "id": 1, "phone_number": "+1234567890", "display_name": "", ... },
+    "is_new_user": true
+  }
 }
 ```
 
@@ -179,12 +221,14 @@ final dio = Dio(BaseOptions(
 // Send OTP
 await dio.post('/auth/send-otp/', data: {'phone_number': '+1234567890'});
 
-// Verify OTP
+// Verify OTP — read from data
 final res = await dio.post('/auth/verify-otp/', data: {
   'phone_number': '+1234567890',
-  'otp_code': '123456',
+  'otp_code': '111111',
 });
-final accessToken = res.data['access'];
+if (res.data['success'] == true) {
+  final accessToken = res.data['data']['access'];
+}
 
 // List conversations
 final chats = await dio.get('/chat/conversations/');

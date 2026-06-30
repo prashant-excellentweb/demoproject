@@ -1,24 +1,14 @@
 from django.urls import path
-from drf_spectacular.utils import extend_schema
-from rest_framework_simplejwt.views import TokenRefreshView
 
-from apps.users.serializers import TokenRefreshRequestSerializer, TokenRefreshResponseSerializer
 from apps.users.views import (
     LogoutView,
     ProfileView,
     SendOTPView,
+    TokenRefreshView,
     UserDetailView,
     UserSearchView,
     VerifyOTPView,
 )
-
-TokenRefreshView = extend_schema(
-    tags=["Auth"],
-    summary="Refresh JWT access token",
-    description="Exchange a valid refresh token for a new access token.",
-    request=TokenRefreshRequestSerializer,
-    responses={200: TokenRefreshResponseSerializer},
-)(TokenRefreshView)
 
 urlpatterns = [
     path("send-otp/", SendOTPView.as_view(), name="send-otp"),

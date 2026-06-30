@@ -32,9 +32,8 @@ export default function LoginPage() {
       const res = await authApi.verifyOtp(phone, otp);
       login(res.data.access, res.data.refresh, res.data.user);
     } catch (err: unknown) {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail || "Invalid OTP. Please try again.");
+      const message = err instanceof Error ? err.message : "Invalid OTP. Please try again.";
+      setError(message);
     } finally {
       setLoading(false);
     }

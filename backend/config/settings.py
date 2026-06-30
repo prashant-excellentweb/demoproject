@@ -106,6 +106,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 50,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "apps.common.exception_handler.custom_exception_handler",
 }
 
 SIMPLE_JWT = {
@@ -148,6 +149,29 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "ChatApp API",
     "DESCRIPTION": """
 WhatsApp-clone REST API for Flutter/mobile clients.
+
+## Standard response format (all APIs)
+
+Every endpoint returns the same JSON structure:
+
+```json
+{
+  "success": true,
+  "message": "Human readable message",
+  "data": { }
+}
+```
+
+On error:
+```json
+{
+  "success": false,
+  "message": "Error description",
+  "data": null
+}
+```
+
+Validation errors put field errors inside `data`.
 
 ## Authentication
 1. `POST /api/auth/send-otp/` — send OTP to phone (no auth)
