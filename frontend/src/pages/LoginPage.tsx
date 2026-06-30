@@ -66,7 +66,7 @@ export default function LoginPage() {
               {loading ? "Sending..." : "Send OTP"}
             </button>
             <p className="otp-hint">
-              We'll send a verification code via SMS. In development mode, check the server console for the OTP.
+              Development mode: OTP is always <strong>111111</strong>
             </p>
           </form>
         ) : (
@@ -86,7 +86,7 @@ export default function LoginPage() {
               {loading ? "Verifying..." : "Verify & Login"}
             </button>
             <p className="otp-hint">
-              Code sent to {phone}.{" "}
+              Code sent to {phone}. Use <strong>111111</strong> in dev mode.{" "}
               <button type="button" onClick={() => { setStep("phone"); setOtp(""); }} style={{ color: "var(--wa-teal-light)", fontWeight: 600 }}>
                 Change number
               </button>

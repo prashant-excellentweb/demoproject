@@ -84,7 +84,10 @@ class OTPVerification(models.Model):
     def generate_otp(cls, phone_number: str) -> "OTPVerification":
         phone_number = normalize_phone(phone_number)
         cls.objects.filter(phone_number=phone_number, is_verified=False).delete()
-        otp_code = str(random.randint(100000, 999999))
+        if getattr(settings, "STATIC_OTP", ""):
+            otp_code = settings.STATIC_OTP
+        else:
+            otp_code = str(random.randint(100000, 999999))
         return cls.objects.create(phone_number=phone_number, otp_code=otp_code)
 
     def is_expired(self) -> bool:
