@@ -1,9 +1,12 @@
 import { useState } from "react";
-import { authApi } from "@/api/client";
+import { useNavigate } from "react-router-dom";
+import { authApi, type AuthTokenData } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
+import { needsProfileSetup } from "@/utils/auth";
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [step, setStep] = useState<"phone" | "otp">("phone");
@@ -30,7 +33,14 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await authApi.verifyOtp(phone, otp);
-      login(res.data.access, res.data.refresh, res.data.user);
+      const payload = res.data as AuthTokenData;
+      login(payload.access, payload.refresh, payload.user);
+
+      if (payload.requires_profile_setup || needsProfileSetup(payload.user)) {
+        navigate("/setup-profile", { replace: true });
+      } else {
+        navigate("/", { replace: true });
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Invalid OTP. Please try again.";
       setError(message);
@@ -44,7 +54,7 @@ export default function LoginPage() {
       <div className="login-card">
         <div className="login-logo">
           <h1>ChatApp</h1>
-          <p>Connect with friends and family</p>
+          <p>Sign in or register with your phone number</p>
         </div>
 
         {error && <div className="error-msg">{error}</div>}
@@ -65,7 +75,7 @@ export default function LoginPage() {
               {loading ? "Sending..." : "Send OTP"}
             </button>
             <p className="otp-hint">
-              Development mode: OTP is always <strong>111111</strong>
+              New here? Enter your number to register. Dev OTP: <strong>111111</strong>
             </p>
           </form>
         ) : (
@@ -82,7 +92,7 @@ export default function LoginPage() {
               />
             </div>
             <button type="submit" className="btn-primary" disabled={loading || otp.length !== 6}>
-              {loading ? "Verifying..." : "Verify & Login"}
+              {loading ? "Verifying..." : "Verify & Continue"}
             </button>
             <p className="otp-hint">
               Code sent to {phone}. Use <strong>111111</strong> in dev mode.{" "}

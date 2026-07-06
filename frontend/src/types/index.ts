@@ -7,6 +7,7 @@ export interface User {
   avatar_url?: string | null;
   is_online: boolean;
   last_seen: string | null;
+  profile_setup_complete?: boolean;
   date_joined?: string;
 }
 
@@ -30,6 +31,8 @@ export interface Conversation {
   is_group: boolean;
   group_name: string;
   group_avatar_url?: string | null;
+  created_by?: number | null;
+  is_admin?: boolean;
   last_message: Message | null;
   unread_count: number;
   created_at: string;

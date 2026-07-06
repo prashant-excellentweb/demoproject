@@ -6,9 +6,7 @@ if (-not (Test-Path .\venv\Scripts\activate.ps1)) {
     .\venv\Scripts\pip install -r requirements.txt
 }
 .\venv\Scripts\activate.ps1
-if (-not (Test-Path .\db.sqlite3)) {
-    python manage.py migrate
-}
+python manage.py migrate --noinput
 Write-Host "Backend starting at http://localhost:9000"
 Write-Host "Swagger UI: http://localhost:9000/api/docs/"
-daphne -b 192.168.1.222 -p 9000 config.asgi:application
+daphne -b 127.0.0.1 -p 9000 config.asgi:application

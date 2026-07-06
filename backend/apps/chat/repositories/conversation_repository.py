@@ -13,6 +13,7 @@ class ConversationRepository:
     def get_user_conversations(user: User):
         return (
             Conversation.objects.filter(participants=user)
+            .select_related("created_by")
             .prefetch_related(
                 Prefetch("participants", queryset=User.objects.only(
                     "id", "display_name", "phone_number", "avatar", "is_online", "last_seen", "about"
@@ -50,6 +51,10 @@ class ConversationRepository:
     @staticmethod
     def user_in_conversation(conversation: Conversation, user: User) -> bool:
         return conversation.participants.filter(id=user.id).exists()
+
+    @staticmethod
+    def remove_participant(conversation: Conversation, user: User) -> None:
+        conversation.participants.remove(user)
 
 
 class MessageRepository:

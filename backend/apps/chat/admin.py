@@ -5,7 +5,7 @@ from apps.chat.models import Conversation, Message, MessageStatus
 
 @admin.register(Conversation)
 class ConversationAdmin(admin.ModelAdmin):
-    list_display = ("id", "is_group", "group_name", "updated_at")
+    list_display = ("id", "is_group", "group_name", "created_by", "updated_at")
     filter_horizontal = ("participants",)
 
 

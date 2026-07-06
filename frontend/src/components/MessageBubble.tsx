@@ -1,13 +1,14 @@
 import { Check, CheckCheck, FileText, Paperclip, Send, Smile, X } from "lucide-react";
 import type { Message } from "@/types";
-import { formatFileSize, formatMessageTime } from "@/utils/format";
+import { formatFileSize, formatMessageTime, getDisplayName } from "@/utils/format";
 
 interface Props {
   message: Message;
   isSent: boolean;
+  showSenderName?: boolean;
 }
 
-export default function MessageBubble({ message, isSent }: Props) {
+export default function MessageBubble({ message, isSent, showSenderName = false }: Props) {
   const renderContent = () => {
     switch (message.message_type) {
       case "image":
@@ -51,6 +52,9 @@ export default function MessageBubble({ message, isSent }: Props) {
   return (
     <div className={`message-row ${isSent ? "sent" : "received"}`}>
       <div className="message-bubble">
+        {showSenderName && !isSent && (
+          <div className="message-sender-name">{getDisplayName(message.sender)}</div>
+        )}
         {renderContent()}
         <div className="message-meta">
           <span className="message-time">{formatMessageTime(message.created_at)}</span>

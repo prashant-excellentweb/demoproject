@@ -76,12 +76,14 @@ class VerifyOTPView(APIView):
         user.save(update_fields=["is_online", "last_seen"])
 
         refresh = RefreshToken.for_user(user)
+        user_data = UserSerializer(user, context={"request": request}).data
         return api_success(
             data={
                 "access": str(refresh.access_token),
                 "refresh": str(refresh),
-                "user": UserSerializer(user, context={"request": request}).data,
+                "user": user_data,
                 "is_new_user": created,
+                "requires_profile_setup": not user.profile_setup_complete,
             },
             message="Login successful.",
         )

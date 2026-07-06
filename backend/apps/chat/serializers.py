@@ -39,6 +39,8 @@ class ConversationSerializer(serializers.ModelSerializer):
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.IntegerField(read_only=True, default=0)
     group_avatar_url = serializers.SerializerMethodField()
+    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    is_admin = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
@@ -49,11 +51,19 @@ class ConversationSerializer(serializers.ModelSerializer):
             "group_name",
             "group_avatar",
             "group_avatar_url",
+            "created_by",
+            "is_admin",
             "last_message",
             "unread_count",
             "created_at",
             "updated_at",
         )
+
+    def get_is_admin(self, obj):
+        request = self.context.get("request")
+        if not request or not obj.is_group:
+            return False
+        return obj.is_group_admin(request.user)
 
     def get_last_message(self, obj):
         latest = getattr(obj, "latest_messages", None)
@@ -79,11 +89,32 @@ class CreateDirectChatSerializer(serializers.Serializer):
 
 
 class CreateGroupSerializer(serializers.Serializer):
-    group_name = serializers.CharField(max_length=100)
+    group_name = serializers.CharField(max_length=100, min_length=2)
     participant_ids = serializers.ListField(
-        child=serializers.IntegerField(),
+        child=serializers.IntegerField(min_value=1),
         min_length=1,
     )
+
+    def validate_group_name(self, value):
+        value = value.strip()
+        if len(value) < 2:
+            raise serializers.ValidationError("Group name must be at least 2 characters.")
+        return value
+
+    def validate_participant_ids(self, value):
+        return list(dict.fromkeys(value))
+
+
+class UpdateGroupSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Conversation
+        fields = ("group_name", "group_avatar")
+
+    def validate_group_name(self, value):
+        value = (value or "").strip()
+        if len(value) < 2:
+            raise serializers.ValidationError("Group name must be at least 2 characters.")
+        return value
 
 
 class SendMessageSerializer(serializers.Serializer):

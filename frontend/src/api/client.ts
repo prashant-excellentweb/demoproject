@@ -60,6 +60,7 @@ export interface AuthTokenData {
   refresh: string;
   user: User;
   is_new_user: boolean;
+  requires_profile_setup: boolean;
 }
 
 export const authApi = {
@@ -82,6 +83,12 @@ export const chatApi = {
     api.post<Conversation>("/chat/conversations/direct/", { user_id }),
   createGroup: (group_name: string, participant_ids: number[]) =>
     api.post<Conversation>("/chat/conversations/group/", { group_name, participant_ids }),
+  updateGroup: (conversationId: number, data: FormData) =>
+    api.patch<Conversation>(`/chat/conversations/${conversationId}/group/`, data, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
+  removeGroupMember: (conversationId: number, userId: number) =>
+    api.post<Conversation>(`/chat/conversations/${conversationId}/members/${userId}/remove/`),
   getMessages: (conversationId: number, before?: number) =>
     api.get<Message[]>(`/chat/conversations/${conversationId}/messages/`, {
       params: before ? { before } : {},

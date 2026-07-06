@@ -1,29 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, MoreVertical, Paperclip, Phone, Search, Send, Smile, Video } from "lucide-react";
+import { MoreVertical, Paperclip, Phone, Search, Send, Video } from "lucide-react";
 import { chatApi } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/context/WebSocketContext";
 import type { Conversation, Message } from "@/types";
 import Avatar from "./Avatar";
+import EmojiPicker from "./EmojiPicker";
+import GroupAvatar from "./GroupAvatar";
+import GroupInfoPanel from "./GroupInfoPanel";
 import MessageBubble from "./MessageBubble";
 import { formatLastSeen, getDisplayName, getOtherParticipant } from "@/utils/format";
 
 interface Props {
   conversation: Conversation;
-  onBack?: () => void;
   onRefreshList: () => void;
+  onConversationUpdate: (conversation: Conversation) => void;
 }
 
-export default function ChatWindow({ conversation, onBack, onRefreshList }: Props) {
+export default function ChatWindow({ conversation, onRefreshList, onConversationUpdate }: Props) {
   const { user } = useAuth();
   const { joinConversation, leaveConversation, sendTyping, markRead, onMessage, onTyping } = useWebSocket();
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout>>();
+
+  const appendMessage = useCallback((msg: Message) => {
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === msg.id)) return prev;
+      return [...prev, msg];
+    });
+  }, []);
 
   const other = conversation.is_group
     ? null
@@ -51,10 +64,7 @@ export default function ChatWindow({ conversation, onBack, onRefreshList }: Prop
   useEffect(() => {
     const unsubMsg = onMessage((msg) => {
       if (msg.conversation === conversation.id) {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
+        appendMessage(msg);
         markRead(conversation.id);
         onRefreshList();
       }
@@ -69,21 +79,27 @@ export default function ChatWindow({ conversation, onBack, onRefreshList }: Prop
       }
     });
     return () => { unsubMsg(); unsubTyping(); };
-  }, [conversation.id, onMessage, onTyping, markRead, onRefreshList]);
+  }, [conversation.id, onMessage, onTyping, markRead, onRefreshList, appendMessage]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const insertEmoji = (emoji: string) => {
+    setText((prev) => prev + emoji);
+    textareaRef.current?.focus();
+  };
+
   const handleSend = async () => {
     if (!text.trim() || sending) return;
     setSending(true);
+    setEmojiOpen(false);
     const form = new FormData();
     form.append("content", text.trim());
     form.append("message_type", "text");
     try {
       const res = await chatApi.sendMessage(conversation.id, form);
-      setMessages((prev) => [...prev, res.data]);
+      appendMessage(res.data);
       setText("");
       onRefreshList();
     } catch (e) {
@@ -107,7 +123,7 @@ export default function ChatWindow({ conversation, onBack, onRefreshList }: Prop
     form.append("message_type", type);
     try {
       const res = await chatApi.sendMessage(conversation.id, form);
-      setMessages((prev) => [...prev, res.data]);
+      appendMessage(res.data);
       onRefreshList();
     } catch (err) {
       console.error(err);
@@ -136,21 +152,44 @@ export default function ChatWindow({ conversation, onBack, onRefreshList }: Prop
   return (
     <div className="chat-window">
       <div className="chat-header">
-        {onBack && (
-          <button className="icon-btn" onClick={onBack}>
-            <ArrowLeft size={22} />
-          </button>
+        {other ? (
+          <Avatar user={other} size={40} />
+        ) : (
+          <GroupAvatar
+            name={conversation.group_name}
+            imageUrl={conversation.group_avatar_url}
+            size={40}
+          />
         )}
-        {other ? <Avatar user={other} size={40} /> : <div className="avatar">G</div>}
-        <div className="chat-header-info" style={{ flex: 1 }}>
+        <div
+          className="chat-header-info"
+          style={{ flex: 1, cursor: conversation.is_group ? "pointer" : "default" }}
+          onClick={() => conversation.is_group && setShowGroupInfo(true)}
+        >
           <h3>{chatName}</h3>
           <p className={other?.is_online ? "online-dot" : ""}>{statusText}</p>
         </div>
-        <button className="icon-btn"><Search size={20} /></button>
-        <button className="icon-btn"><Phone size={20} /></button>
-        <button className="icon-btn"><Video size={20} /></button>
-        <button className="icon-btn"><MoreVertical size={20} /></button>
+        <button type="button" className="icon-btn"><Search size={20} /></button>
+        <button type="button" className="icon-btn"><Phone size={20} /></button>
+        <button type="button" className="icon-btn"><Video size={20} /></button>
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={() => conversation.is_group && setShowGroupInfo(true)}
+        >
+          <MoreVertical size={20} />
+        </button>
       </div>
+
+      {showGroupInfo && conversation.is_group && (
+        <GroupInfoPanel
+          conversation={conversation}
+          currentUserId={user!.id}
+          onClose={() => setShowGroupInfo(false)}
+          onUpdated={onConversationUpdate}
+          onRefreshList={onRefreshList}
+        />
+      )}
 
       <div className="messages-area">
         {messages.map((msg) => (
@@ -158,6 +197,7 @@ export default function ChatWindow({ conversation, onBack, onRefreshList }: Prop
             key={msg.id}
             message={msg}
             isSent={msg.sender.id === user!.id}
+            showSenderName={conversation.is_group}
           />
         ))}
         <div ref={messagesEndRef} />
@@ -168,8 +208,13 @@ export default function ChatWindow({ conversation, onBack, onRefreshList }: Prop
       )}
 
       <div className="message-input-area">
-        <button className="icon-btn"><Smile size={24} /></button>
-        <button className="attach-btn" onClick={() => fileInputRef.current?.click()}>
+        <EmojiPicker
+          open={emojiOpen}
+          onToggle={() => setEmojiOpen((o) => !o)}
+          onClose={() => setEmojiOpen(false)}
+          onSelect={insertEmoji}
+        />
+        <button type="button" className="attach-btn" onClick={() => fileInputRef.current?.click()}>
           <Paperclip size={22} />
         </button>
         <input
@@ -181,6 +226,7 @@ export default function ChatWindow({ conversation, onBack, onRefreshList }: Prop
         />
         <div className="message-input-wrapper">
           <textarea
+            ref={textareaRef}
             placeholder="Type a message"
             value={text}
             onChange={(e) => handleTextChange(e.target.value)}
@@ -188,7 +234,7 @@ export default function ChatWindow({ conversation, onBack, onRefreshList }: Prop
             rows={1}
           />
         </div>
-        <button className="send-btn" onClick={handleSend} disabled={!text.trim() || sending}>
+        <button type="button" className="send-btn" onClick={handleSend} disabled={!text.trim() || sending}>
           <Send size={20} />
         </button>
       </div>

@@ -7,7 +7,7 @@ import { getDisplayName } from "@/utils/format";
 
 interface Props {
   onClose: () => void;
-  onChatCreated: () => void;
+  onChatCreated: (conversation?: import("@/types").Conversation) => void;
 }
 
 export default function NewChatModal({ onClose, onChatCreated }: Props) {
@@ -29,8 +29,8 @@ export default function NewChatModal({ onClose, onChatCreated }: Props) {
   const startChat = async (userId: number) => {
     setLoading(true);
     try {
-      await chatApi.createDirectChat(userId);
-      onChatCreated();
+      const res = await chatApi.createDirectChat(userId);
+      onChatCreated(res.data);
       onClose();
     } catch (e) {
       console.error(e);

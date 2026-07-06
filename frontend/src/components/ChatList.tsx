@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/context/WebSocketContext";
 import type { Conversation } from "@/types";
 import Avatar from "./Avatar";
+import GroupAvatar from "./GroupAvatar";
 import StatusBar from "./StatusBar";
 import {
   formatChatTime,
@@ -17,20 +18,24 @@ interface Props {
   activeId: number | null;
   onSelect: (conv: Conversation) => void;
   onNewChat: () => void;
+  onNewGroup: () => void;
   onProfile: () => void;
   onCreateStatus: () => void;
   onViewStatus: (userId: number, statuses: import("@/types").Status[], startIndex?: number) => void;
   refreshKey: number;
+  onConversationsChange?: (conversations: Conversation[]) => void;
 }
 
 export default function ChatList({
   activeId,
   onSelect,
   onNewChat,
+  onNewGroup,
   onProfile,
   onCreateStatus,
   onViewStatus,
   refreshKey,
+  onConversationsChange,
 }: Props) {
   const { user } = useAuth();
   const { onMessage, connected } = useWebSocket();
@@ -38,7 +43,10 @@ export default function ChatList({
   const [search, setSearch] = useState("");
 
   const loadConversations = () => {
-    chatApi.getConversations().then((res) => setConversations(res.data)).catch(console.error);
+    chatApi.getConversations().then((res) => {
+      setConversations(res.data);
+      onConversationsChange?.(res.data);
+    }).catch(console.error);
   };
 
   useEffect(() => {
@@ -98,7 +106,7 @@ export default function ChatList({
           <button className="icon-btn" title="New chat" onClick={onNewChat}>
             <MessageCircle size={22} />
           </button>
-          <button className="icon-btn" title="New group" onClick={onNewChat}>
+          <button className="icon-btn" title="New group" onClick={onNewGroup}>
             <UserPlus size={22} />
           </button>
           <button className="icon-btn" title="Menu" onClick={onProfile}>
@@ -124,6 +132,11 @@ export default function ChatList({
         {filtered.map((c) => {
           const avatarUser = getChatAvatar(c);
           const lastMsg = c.last_message;
+          const preview = lastMsg
+            ? c.is_group
+              ? `${getDisplayName(lastMsg.sender)}: ${getMessagePreview(lastMsg)}`
+              : getMessagePreview(lastMsg)
+            : "No messages yet";
           return (
             <div
               key={c.id}
@@ -133,7 +146,7 @@ export default function ChatList({
               {avatarUser ? (
                 <Avatar user={avatarUser} />
               ) : (
-                <div className="avatar">G</div>
+                <GroupAvatar name={c.group_name} imageUrl={c.group_avatar_url} />
               )}
               <div className="chat-info">
                 <div className="chat-info-top">
@@ -143,9 +156,7 @@ export default function ChatList({
                   )}
                 </div>
                 <div className="chat-info-top">
-                  <span className="chat-preview">
-                    {lastMsg ? getMessagePreview(lastMsg) : "No messages yet"}
-                  </span>
+                  <span className="chat-preview">{preview}</span>
                   {c.unread_count > 0 && (
                     <span className="unread-badge">{c.unread_count}</span>
                   )}

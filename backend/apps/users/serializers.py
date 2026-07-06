@@ -19,9 +19,10 @@ class UserSerializer(serializers.ModelSerializer):
             "avatar_url",
             "is_online",
             "last_seen",
+            "profile_setup_complete",
             "date_joined",
         )
-        read_only_fields = ("id", "phone_number", "is_online", "last_seen", "date_joined")
+        read_only_fields = ("id", "phone_number", "is_online", "last_seen", "profile_setup_complete", "date_joined")
 
     def get_avatar_url(self, obj):
         if obj.avatar:
@@ -78,6 +79,21 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ("display_name", "about", "avatar")
+
+    def validate_display_name(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Display name is required.")
+        if len(value) < 2:
+            raise serializers.ValidationError("Display name must be at least 2 characters.")
+        return value
+
+    def update(self, instance, validated_data):
+        user = super().update(instance, validated_data)
+        if user.display_name.strip():
+            user.profile_setup_complete = True
+            user.save(update_fields=["profile_setup_complete"])
+        return user
 
 
 class SendOTPResponseSerializer(serializers.Serializer):

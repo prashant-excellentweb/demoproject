@@ -18,6 +18,7 @@ class UserManager(BaseUserManager):
         if not phone_number:
             raise ValueError("Phone number is required")
         phone_number = normalize_phone(phone_number)
+        extra_fields.setdefault("profile_setup_complete", False)
         user = self.model(phone_number=phone_number, username=phone_number, **extra_fields)
         user.set_unusable_password()
         user.save(using=self._db)
@@ -43,6 +44,7 @@ class User(AbstractUser):
     avatar = models.ImageField(upload_to="avatars/", blank=True, null=True)
     is_online = models.BooleanField(default=False)
     last_seen = models.DateTimeField(null=True, blank=True)
+    profile_setup_complete = models.BooleanField(default=False)
 
     USERNAME_FIELD = "phone_number"
     REQUIRED_FIELDS: list[str] = []

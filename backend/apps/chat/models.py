@@ -10,6 +10,13 @@ class Conversation(models.Model):
     is_group = models.BooleanField(default=False)
     group_name = models.CharField(max_length=100, blank=True)
     group_avatar = models.ImageField(upload_to="group_avatars/", blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_groups",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -24,6 +31,14 @@ class Conversation(models.Model):
         if self.is_group:
             return self.group_name or f"Group {self.pk}"
         return f"Conversation {self.pk}"
+
+    def is_group_admin(self, user) -> bool:
+        if not self.is_group:
+            return False
+        if self.created_by_id:
+            return self.created_by_id == user.id
+        admin = self.participants.order_by("id").first()
+        return admin is not None and admin.id == user.id
 
 
 class Message(models.Model):

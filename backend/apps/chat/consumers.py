@@ -141,7 +141,7 @@ def broadcast_new_message(message: Message, request=None):
         {"type": "chat_message", "message": serialized},
     )
 
-    for participant in message.conversation.participants.all():
+    for participant in message.conversation.participants.exclude(id=message.sender_id):
         async_to_sync(channel_layer.group_send)(
             f"user_{participant.id}",
             {"type": "chat_message", "message": serialized},
