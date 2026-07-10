@@ -97,6 +97,18 @@ export const chatApi = {
     api.post<Message>(`/chat/conversations/${conversationId}/send/`, data, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
+  deleteMessage: (conversationId: number, messageId: number, deleteFor: "me" | "everyone") =>
+    api.delete<{
+      id: number;
+      conversation: number;
+      delete_for: "me" | "everyone";
+      hidden?: boolean;
+      is_deleted?: boolean;
+    }>(`/chat/conversations/${conversationId}/messages/${messageId}/`, {
+      data: { delete_for: deleteFor },
+    }),
+  reactToMessage: (conversationId: number, messageId: number, emoji: string) =>
+    api.post<Message>(`/chat/conversations/${conversationId}/messages/${messageId}/react/`, { emoji }),
   markRead: (conversationId: number) =>
     api.post<null>(`/chat/conversations/${conversationId}/read/`),
 };

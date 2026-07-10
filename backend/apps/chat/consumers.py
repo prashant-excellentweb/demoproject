@@ -85,6 +85,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def chat_message(self, event):
         await self.send(text_data=json.dumps({"type": "message", "message": event["message"]}))
 
+    async def message_deleted(self, event):
+        await self.send(
+            text_data=json.dumps({"type": "message_deleted", "message": event["message"]})
+        )
+
+    async def message_updated(self, event):
+        await self.send(
+            text_data=json.dumps({"type": "message_updated", "message": event["message"]})
+        )
+
     async def message_read(self, event):
         await self.send(text_data=json.dumps({"type": "read", **event}))
 
@@ -145,4 +155,42 @@ def broadcast_new_message(message: Message, request=None):
         async_to_sync(channel_layer.group_send)(
             f"user_{participant.id}",
             {"type": "chat_message", "message": serialized},
+        )
+
+
+def broadcast_message_deleted(message: Message, request=None):
+    """Broadcast message deletion to all conversation participants."""
+    from channels.layers import get_channel_layer
+
+    channel_layer = get_channel_layer()
+    serialized = MessageSerializer(message, context={"request": request}).data
+
+    async_to_sync(channel_layer.group_send)(
+        f"conversation_{message.conversation_id}",
+        {"type": "message_deleted", "message": serialized},
+    )
+
+    for participant in message.conversation.participants.all():
+        async_to_sync(channel_layer.group_send)(
+            f"user_{participant.id}",
+            {"type": "message_deleted", "message": serialized},
+        )
+
+
+def broadcast_message_updated(message: Message, request=None):
+    """Broadcast message updates (e.g. reactions) to all participants."""
+    from channels.layers import get_channel_layer
+
+    channel_layer = get_channel_layer()
+    serialized = MessageSerializer(message, context={"request": request}).data
+
+    async_to_sync(channel_layer.group_send)(
+        f"conversation_{message.conversation_id}",
+        {"type": "message_updated", "message": serialized},
+    )
+
+    for participant in message.conversation.participants.all():
+        async_to_sync(channel_layer.group_send)(
+            f"user_{participant.id}",
+            {"type": "message_updated", "message": serialized},
         )

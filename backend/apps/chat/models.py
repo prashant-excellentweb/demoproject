@@ -70,6 +70,15 @@ class Message(models.Model):
     file_name = models.CharField(max_length=255, blank=True)
     file_size = models.PositiveIntegerField(default=0)
     is_read = models.BooleanField(default=False)
+    is_deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deleted_messages",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -79,6 +88,7 @@ class Message(models.Model):
             models.Index(fields=["conversation", "created_at"]),
             models.Index(fields=["sender", "created_at"]),
             models.Index(fields=["conversation", "is_read"]),
+            models.Index(fields=["conversation", "is_deleted"]),
         ]
 
     def __str__(self):
@@ -99,3 +109,38 @@ class MessageStatus(models.Model):
         indexes = [
             models.Index(fields=["user", "is_read"]),
         ]
+
+
+class MessageReaction(models.Model):
+    """One emoji reaction per user per message (toggle to remove)."""
+
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="reactions")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="message_reactions")
+    emoji = models.CharField(max_length=16)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("message", "user")
+        indexes = [
+            models.Index(fields=["message", "emoji"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user_id} {self.emoji} on message {self.message_id}"
+
+
+class MessageHidden(models.Model):
+    """Per-user 'delete for me' — message stays visible to others."""
+
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="hidden_for")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="hidden_messages")
+    hidden_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("message", "user")
+        indexes = [
+            models.Index(fields=["user", "message"]),
+        ]
+
+    def __str__(self):
+        return f"user {self.user_id} hid message {self.message_id}"

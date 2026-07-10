@@ -4,8 +4,10 @@ from apps.chat.views import (
     ConversationListView,
     CreateDirectChatView,
     CreateGroupView,
+    DeleteMessageView,
     MarkReadView,
     MessageListView,
+    ReactToMessageView,
     RemoveGroupMemberView,
     SendMessageView,
     UpdateGroupView,
@@ -22,6 +24,16 @@ urlpatterns = [
         name="remove-group-member",
     ),
     path("conversations/<int:conversation_id>/messages/", MessageListView.as_view(), name="message-list"),
+    path(
+        "conversations/<int:conversation_id>/messages/<int:message_id>/",
+        DeleteMessageView.as_view(),
+        name="delete-message",
+    ),
+    path(
+        "conversations/<int:conversation_id>/messages/<int:message_id>/react/",
+        ReactToMessageView.as_view(),
+        name="react-to-message",
+    ),
     path("conversations/<int:conversation_id>/send/", SendMessageView.as_view(), name="send-message"),
     path("conversations/<int:conversation_id>/read/", MarkReadView.as_view(), name="mark-read"),
 ]

@@ -40,7 +40,13 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function getMessagePreview(message: { message_type: string; content: string; file_name?: string }): string {
+export function getMessagePreview(message: {
+  message_type: string;
+  content: string;
+  file_name?: string;
+  is_deleted?: boolean;
+}): string {
+  if (message.is_deleted) return "This message was deleted";
   switch (message.message_type) {
     case "image": return "📷 Photo";
     case "video": return "🎥 Video";

@@ -10,6 +10,7 @@ import GroupAvatar from "./GroupAvatar";
 import GroupInfoPanel from "./GroupInfoPanel";
 import MessageBubble from "./MessageBubble";
 import { formatLastSeen, getDisplayName, getOtherParticipant } from "@/utils/format";
+import { isGroupAdmin } from "@/utils/group";
 
 interface Props {
   conversation: Conversation;
@@ -19,7 +20,7 @@ interface Props {
 
 export default function ChatWindow({ conversation, onRefreshList, onConversationUpdate }: Props) {
   const { user } = useAuth();
-  const { joinConversation, leaveConversation, sendTyping, markRead, onMessage, onTyping } = useWebSocket();
+  const { joinConversation, leaveConversation, sendTyping, markRead, onMessage, onTyping, onMessageDeleted, onMessageUpdated } = useWebSocket();
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [typingUser, setTypingUser] = useState<string | null>(null);
@@ -37,6 +38,31 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
       return [...prev, msg];
     });
   }, []);
+
+  const replaceMessage = useCallback((msg: Message) => {
+    setMessages((prev) => prev.map((m) => (m.id === msg.id ? msg : m)));
+  }, []);
+
+  const handleDeleteMessage = useCallback(async (msg: Message, deleteFor: "me" | "everyone") => {
+    const res = await chatApi.deleteMessage(conversation.id, msg.id, deleteFor);
+    if (deleteFor === "me" || res.data?.hidden) {
+      setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+    } else {
+      replaceMessage({ ...msg, ...res.data, is_deleted: true } as Message);
+    }
+    onRefreshList();
+  }, [conversation.id, replaceMessage, onRefreshList]);
+
+  const handleReactToMessage = useCallback(async (msg: Message, emoji: string) => {
+    const res = await chatApi.reactToMessage(conversation.id, msg.id, emoji);
+    replaceMessage(res.data);
+  }, [conversation.id, replaceMessage]);
+
+  const canDeleteForEveryone = useCallback((msg: Message) => {
+    if (msg.is_deleted) return false;
+    if (msg.sender.id === user!.id) return true;
+    return isGroupAdmin(conversation, user!.id);
+  }, [user, conversation]);
 
   const other = conversation.is_group
     ? null
@@ -64,9 +90,24 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   useEffect(() => {
     const unsubMsg = onMessage((msg) => {
       if (msg.conversation === conversation.id) {
-        appendMessage(msg);
-        markRead(conversation.id);
+        if (msg.is_deleted) {
+          replaceMessage(msg);
+        } else {
+          appendMessage(msg);
+          markRead(conversation.id);
+        }
         onRefreshList();
+      }
+    });
+    const unsubDeleted = onMessageDeleted((msg) => {
+      if (msg.conversation === conversation.id) {
+        replaceMessage(msg);
+        onRefreshList();
+      }
+    });
+    const unsubUpdated = onMessageUpdated((msg) => {
+      if (msg.conversation === conversation.id) {
+        replaceMessage(msg);
       }
     });
     const unsubTyping = onTyping((data) => {
@@ -78,8 +119,8 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
         setTypingUser(null);
       }
     });
-    return () => { unsubMsg(); unsubTyping(); };
-  }, [conversation.id, onMessage, onTyping, markRead, onRefreshList, appendMessage]);
+    return () => { unsubMsg(); unsubDeleted(); unsubUpdated(); unsubTyping(); };
+  }, [conversation.id, onMessage, onMessageDeleted, onMessageUpdated, onTyping, markRead, onRefreshList, appendMessage, replaceMessage]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -198,6 +239,9 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
             message={msg}
             isSent={msg.sender.id === user!.id}
             showSenderName={conversation.is_group}
+            canDeleteForEveryone={canDeleteForEveryone(msg)}
+            onDelete={handleDeleteMessage}
+            onReact={handleReactToMessage}
           />
         ))}
         <div ref={messagesEndRef} />

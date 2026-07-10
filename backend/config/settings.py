@@ -182,12 +182,21 @@ Validation errors put field errors inside `data`.
 ## WebSocket (real-time chat)
 - URL: `ws://<host>:9000/ws/chat/?token=<access_token>`
 - Actions (JSON): `join_conversation`, `leave_conversation`, `typing`, `mark_read`
-- Events received: `message`, `typing`, `read`
+- Events received: `message`, `message_deleted`, `message_updated`, `typing`, `read`
+
+## Message delete
+- `DELETE /api/chat/conversations/{id}/messages/{message_id}/`
+- Body: `{ "delete_for": "me" }` — hide only for current user
+- Body: `{ "delete_for": "everyone" }` — soft-delete for all (sender or group admin)
+
+## Reactions
+- `POST /api/chat/conversations/{id}/messages/{message_id}/react/`
+- Body: `{ "emoji": "👍" }` — allowed: 👍 ❤️ 😂 😮 😢 🙏 🔥 👏
 
 ## Media uploads
 Use `multipart/form-data` for messages, profile avatar, and status media.
     """,
-    "VERSION": "1.0.0",
+    "VERSION": "1.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": r"/api/",

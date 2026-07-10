@@ -133,8 +133,12 @@ POST /auth/logout/
 | GET | `/chat/conversations/` | List all conversations |
 | POST | `/chat/conversations/direct/` | Start 1:1 chat `{ "user_id": 2 }` |
 | POST | `/chat/conversations/group/` | Create group `{ "group_name": "Family", "participant_ids": [2,3] }` |
-| GET | `/chat/conversations/{id}/messages/?before=100` | Get messages (paginated) |
+| PATCH | `/chat/conversations/{id}/group/` | Update group name/avatar (admin only, multipart) |
+| POST | `/chat/conversations/{id}/members/{user_id}/remove/` | Remove member (admin only) |
+| GET | `/chat/conversations/{id}/messages/?before=100` | Get messages (paginated; excludes your "delete for me") |
 | POST | `/chat/conversations/{id}/send/` | Send message (multipart) |
+| DELETE | `/chat/conversations/{id}/messages/{message_id}/` | Delete for me **or** everyone |
+| POST | `/chat/conversations/{id}/messages/{message_id}/react/` | Add/toggle emoji reaction |
 | POST | `/chat/conversations/{id}/read/` | Mark as read |
 
 ### Send text message
@@ -156,6 +160,111 @@ message_type=image   // image | video | pdf | document | audio
 ```
 
 **message_type values:** `text`, `image`, `video`, `pdf`, `document`, `audio`
+
+### Delete message — for me vs everyone
+
+```http
+DELETE /chat/conversations/1/messages/42/
+Content-Type: application/json
+Authorization: Bearer <access_token>
+
+{ "delete_for": "me" }
+```
+
+| `delete_for` | Who can use it | Effect |
+|--------------|----------------|--------|
+| `me` | Any participant | Message hidden **only for you**. Others still see it. Removed from your message list / chat preview. |
+| `everyone` | Sender, or group admin | Soft-delete for **all**. Content cleared; everyone sees `"This message was deleted"`. Real-time WS event `message_deleted`. |
+
+**Delete for me — success response:**
+```json
+{
+  "success": true,
+  "message": "Message deleted for you.",
+  "data": {
+    "id": 42,
+    "conversation": 1,
+    "delete_for": "me",
+    "hidden": true
+  }
+}
+```
+
+**Delete for everyone — success response:**
+```json
+{
+  "success": true,
+  "message": "Message deleted for everyone.",
+  "data": {
+    "id": 42,
+    "conversation": 1,
+    "is_deleted": true,
+    "content": "",
+    "delete_for": "everyone",
+    "reactions": [],
+    "...": "..."
+  }
+}
+```
+
+**Flutter (Dio):**
+```dart
+// Delete for me only
+await dio.delete(
+  '/chat/conversations/$convId/messages/$messageId/',
+  data: {'delete_for': 'me'},
+);
+
+// Delete for everyone
+await dio.delete(
+  '/chat/conversations/$convId/messages/$messageId/',
+  data: {'delete_for': 'everyone'},
+);
+```
+
+### React to a message
+
+```http
+POST /chat/conversations/1/messages/42/react/
+Content-Type: application/json
+
+{ "emoji": "👍" }
+```
+
+**Allowed emojis:** `👍` `❤️` `😂` `😮` `😢` `🙏` `🔥` `👏`
+
+- Same emoji again → removes your reaction (toggle)
+- Different emoji → replaces your previous reaction
+- One reaction per user per message
+
+**Response `data` includes:**
+```json
+{
+  "id": 42,
+  "reactions": [
+    { "emoji": "👍", "count": 2, "user_ids": [1, 3] }
+  ],
+  "my_reaction": "👍"
+}
+```
+
+Real-time: WebSocket event `message_updated` with the full message object.
+
+### Group admin
+
+Group creator is admin (`created_by` / `is_admin: true` on conversation).
+
+```http
+PATCH /chat/conversations/1/group/
+Content-Type: multipart/form-data
+
+group_name=Family Chat
+group_avatar=<optional file>
+```
+
+```http
+POST /chat/conversations/1/members/5/remove/
+```
 
 ---
 
@@ -202,9 +311,20 @@ ws://<host>:9000/ws/chat/?token=<access_token>
 
 ### Receive (server → client)
 ```json
-{ "type": "message", "message": { "id": 1, "content": "Hi", "sender": {...}, ... } }
+{ "type": "message", "message": { "id": 1, "content": "Hi", "sender": {...}, "reactions": [], "my_reaction": null } }
+{ "type": "message_deleted", "message": { "id": 1, "is_deleted": true, "content": "" } }
+{ "type": "message_updated", "message": { "id": 1, "reactions": [...], "my_reaction": "❤️" } }
 { "type": "typing", "user_id": 2, "user_name": "John", "is_typing": true }
 ```
+
+| Event | When |
+|-------|------|
+| `message` | New message sent |
+| `message_deleted` | Delete for everyone |
+| `message_updated` | Reaction added/changed/removed |
+| `typing` | Someone is typing |
+
+**Note:** "Delete for me" does **not** broadcast — only your client should remove the message locally after the API succeeds.
 
 **Flutter packages:** `web_socket_channel`, `dio` or `http`, `flutter_secure_storage` for tokens.
 
@@ -239,6 +359,15 @@ final form = FormData.fromMap({
   'message_type': 'image',
 });
 await dio.post('/chat/conversations/1/send/', data: form);
+
+// React
+await dio.post('/chat/conversations/1/messages/42/react/', data: {'emoji': '❤️'});
+
+// Delete for me
+await dio.delete('/chat/conversations/1/messages/42/', data: {'delete_for': 'me'});
+
+// Delete for everyone
+await dio.delete('/chat/conversations/1/messages/42/', data: {'delete_for': 'everyone'});
 ```
 
 ---
@@ -255,3 +384,6 @@ Use with **openapi_generator** for Dart client:
 ```bash
 openapi-generator generate -i openapi.yaml -g dart-dio -o ./chatapp_api
 ```
+
+**Live Swagger UI:** http://localhost:9000/api/docs/  
+Authorize with: `Bearer <access_token>`

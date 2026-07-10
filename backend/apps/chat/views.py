@@ -3,14 +3,16 @@ from rest_framework import status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.views import APIView
 
-from apps.chat.consumers import broadcast_new_message
+from apps.chat.consumers import broadcast_message_deleted, broadcast_message_updated, broadcast_new_message
 from apps.chat.models import Conversation, Message
 from apps.chat.repositories.conversation_repository import ConversationRepository, MessageRepository
 from apps.chat.serializers import (
     ConversationSerializer,
     CreateDirectChatSerializer,
     CreateGroupSerializer,
+    DeleteMessageSerializer,
     MessageSerializer,
+    ReactToMessageSerializer,
     SendMessageSerializer,
     UpdateGroupSerializer,
 )
@@ -168,7 +170,12 @@ class MessageListView(APIView):
 
         before_id = request.query_params.get("before")
         before_id = int(before_id) if before_id else None
-        messages = MessageRepository.get_conversation_messages(conv, limit=50, before_id=before_id)
+        messages = MessageRepository.get_conversation_messages(
+            conv,
+            user=request.user,
+            limit=50,
+            before_id=before_id,
+        )
         messages = list(reversed(messages))
         MessageRepository.mark_as_read(conv, request.user)
         return api_success(
@@ -211,6 +218,113 @@ class SendMessageView(APIView):
             data=MessageSerializer(message, context={"request": request}).data,
             message="Message sent successfully.",
             status_code=status.HTTP_201_CREATED,
+        )
+
+
+class DeleteMessageView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="Delete message for me or for everyone",
+        description=(
+            "Use `delete_for=me` to hide the message only for the current user "
+            "(others still see it). Use `delete_for=everyone` to soft-delete for all "
+            "(sender or group admin only). Accepts JSON body or query param."
+        ),
+        request=DeleteMessageSerializer,
+        responses={200: MessageSerializer},
+    )
+    def delete(self, request, conversation_id, message_id):
+        try:
+            conv = Conversation.objects.get(id=conversation_id)
+        except Conversation.DoesNotExist:
+            return api_error(message="Conversation not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if not ConversationRepository.user_in_conversation(conv, request.user):
+            return api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
+
+        try:
+            message = Message.objects.select_related("sender", "conversation").get(
+                id=message_id,
+                conversation=conv,
+            )
+        except Message.DoesNotExist:
+            return api_error(message="Message not found.", status_code=status.HTTP_404_NOT_FOUND)
+
+        delete_for = request.data.get("delete_for") or request.query_params.get("delete_for") or "everyone"
+        serializer = DeleteMessageSerializer(data={"delete_for": delete_for})
+        serializer.is_valid(raise_exception=True)
+        delete_for = serializer.validated_data["delete_for"]
+
+        if delete_for == "me":
+            MessageRepository.hide_message_for_user(message, request.user)
+            return api_success(
+                data={
+                    "id": message.id,
+                    "conversation": conversation_id,
+                    "delete_for": "me",
+                    "hidden": True,
+                },
+                message="Message deleted for you.",
+            )
+
+        if message.is_deleted:
+            return api_success(
+                data=MessageSerializer(message, context={"request": request}).data,
+                message="Message already deleted.",
+            )
+
+        is_sender = message.sender_id == request.user.id
+        is_admin = conv.is_group and conv.is_group_admin(request.user)
+        if not is_sender and not is_admin:
+            return api_error(
+                message="Only the sender or group admin can delete for everyone.",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+
+        message = MessageRepository.soft_delete_message(message, request.user)
+        broadcast_message_deleted(message, request)
+        data = MessageSerializer(message, context={"request": request}).data
+        data["delete_for"] = "everyone"
+        return api_success(
+            data=data,
+            message="Message deleted for everyone.",
+        )
+
+
+class ReactToMessageView(APIView):
+    @extend_schema(tags=["Chat"], summary="Add or toggle emoji reaction on a message", request=ReactToMessageSerializer)
+    def post(self, request, conversation_id, message_id):
+        try:
+            conv = Conversation.objects.get(id=conversation_id)
+        except Conversation.DoesNotExist:
+            return api_error(message="Conversation not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if not ConversationRepository.user_in_conversation(conv, request.user):
+            return api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
+
+        try:
+            message = Message.objects.select_related("sender", "conversation").get(
+                id=message_id,
+                conversation=conv,
+            )
+        except Message.DoesNotExist:
+            return api_error(message="Message not found.", status_code=status.HTTP_404_NOT_FOUND)
+
+        if message.is_deleted:
+            return api_error(
+                message="Cannot react to a deleted message.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = ReactToMessageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        message = MessageRepository.toggle_reaction(
+            message,
+            request.user,
+            serializer.validated_data["emoji"],
+        )
+        broadcast_message_updated(message, request)
+        return api_success(
+            data=MessageSerializer(message, context={"request": request}).data,
+            message="Reaction updated.",
         )
 
 

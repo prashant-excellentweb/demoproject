@@ -3,10 +3,14 @@ from rest_framework import serializers
 from apps.chat.models import Conversation, Message
 from apps.users.serializers import UserPublicSerializer
 
+ALLOWED_REACTIONS = ("👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "👏")
+
 
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserPublicSerializer(read_only=True)
     file_url = serializers.SerializerMethodField()
+    reactions = serializers.SerializerMethodField()
+    my_reaction = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -21,17 +25,84 @@ class MessageSerializer(serializers.ModelSerializer):
             "file_name",
             "file_size",
             "is_read",
+            "is_deleted",
+            "deleted_at",
+            "reactions",
+            "my_reaction",
             "created_at",
         )
-        read_only_fields = ("id", "sender", "is_read", "created_at", "file_size")
+        read_only_fields = (
+            "id",
+            "sender",
+            "is_read",
+            "is_deleted",
+            "deleted_at",
+            "created_at",
+            "file_size",
+        )
 
     def get_file_url(self, obj):
-        if obj.file:
-            request = self.context.get("request")
-            if request:
-                return request.build_absolute_uri(obj.file.url)
-            return obj.file.url
+        if obj.is_deleted or not obj.file:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(obj.file.url)
+        return obj.file.url
+
+    def get_reactions(self, obj):
+        if obj.is_deleted:
+            return []
+        grouped: dict[str, dict] = {}
+        for reaction in obj.reactions.all():
+            entry = grouped.setdefault(
+                reaction.emoji,
+                {"emoji": reaction.emoji, "count": 0, "user_ids": []},
+            )
+            entry["count"] += 1
+            entry["user_ids"].append(reaction.user_id)
+        return list(grouped.values())
+
+    def get_my_reaction(self, obj):
+        if obj.is_deleted:
+            return None
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return None
+        for reaction in obj.reactions.all():
+            if reaction.user_id == request.user.id:
+                return reaction.emoji
         return None
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.is_deleted:
+            data["content"] = ""
+            data["file"] = None
+            data["file_url"] = None
+            data["file_name"] = ""
+            data["file_size"] = 0
+            data["reactions"] = []
+            data["my_reaction"] = None
+        return data
+
+
+class ReactToMessageSerializer(serializers.Serializer):
+    emoji = serializers.CharField(max_length=16)
+
+    def validate_emoji(self, value):
+        value = (value or "").strip()
+        if value not in ALLOWED_REACTIONS:
+            raise serializers.ValidationError(
+                f"Unsupported reaction. Allowed: {', '.join(ALLOWED_REACTIONS)}"
+            )
+        return value
+
+
+class DeleteMessageSerializer(serializers.Serializer):
+    delete_for = serializers.ChoiceField(
+        choices=("me", "everyone"),
+        help_text="'me' = hide only for you; 'everyone' = delete for all participants",
+    )
 
 
 class ConversationSerializer(serializers.ModelSerializer):

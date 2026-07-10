@@ -11,6 +11,12 @@ export interface User {
   date_joined?: string;
 }
 
+export interface MessageReactionSummary {
+  emoji: string;
+  count: number;
+  user_ids: number[];
+}
+
 export interface Message {
   id: number;
   conversation: number;
@@ -22,6 +28,10 @@ export interface Message {
   file_name: string;
   file_size: number;
   is_read: boolean;
+  is_deleted?: boolean;
+  deleted_at?: string | null;
+  reactions?: MessageReactionSummary[];
+  my_reaction?: string | null;
   created_at: string;
 }
 

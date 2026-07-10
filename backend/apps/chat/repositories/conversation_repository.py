@@ -4,7 +4,7 @@ from django.db import transaction
 from django.db.models import Count, Max, Prefetch, Q
 from django.utils import timezone
 
-from apps.chat.models import Conversation, Message, MessageStatus
+from apps.chat.models import Conversation, Message, MessageHidden, MessageReaction, MessageStatus
 from apps.users.models import User
 
 
@@ -20,14 +20,20 @@ class ConversationRepository:
                 )),
                 Prefetch(
                     "messages",
-                    queryset=Message.objects.select_related("sender").order_by("-created_at")[:1],
+                    queryset=Message.objects.select_related("sender")
+                    .prefetch_related("reactions__user")
+                    .exclude(hidden_for__user=user)
+                    .order_by("-created_at")[:1],
                     to_attr="latest_messages",
                 ),
             )
             .annotate(
                 unread_count=Count(
                     "messages",
-                    filter=Q(messages__is_read=False) & ~Q(messages__sender=user),
+                    filter=Q(messages__is_read=False)
+                    & Q(messages__is_deleted=False)
+                    & ~Q(messages__sender=user)
+                    & ~Q(messages__hidden_for__user=user),
                 ),
                 last_message_time=Max("messages__created_at"),
             )
@@ -102,8 +108,18 @@ class MessageRepository:
         return message
 
     @staticmethod
-    def get_conversation_messages(conversation: Conversation, limit: int = 50, before_id: int | None = None):
-        qs = Message.objects.filter(conversation=conversation).select_related("sender")
+    def get_conversation_messages(
+        conversation: Conversation,
+        user: User,
+        limit: int = 50,
+        before_id: int | None = None,
+    ):
+        qs = (
+            Message.objects.filter(conversation=conversation)
+            .exclude(hidden_for__user=user)
+            .select_related("sender")
+            .prefetch_related("reactions__user")
+        )
         if before_id:
             qs = qs.filter(id__lt=before_id)
         return qs.order_by("-created_at")[:limit]
@@ -113,9 +129,61 @@ class MessageRepository:
         Message.objects.filter(
             conversation=conversation,
             is_read=False,
-        ).exclude(sender=user).update(is_read=True)
+            is_deleted=False,
+        ).exclude(sender=user).exclude(hidden_for__user=user).update(is_read=True)
         MessageStatus.objects.filter(
             message__conversation=conversation,
             user=user,
             is_read=False,
         ).update(is_read=True, read_at=timezone.now())
+
+    @staticmethod
+    def soft_delete_message(message: Message, deleted_by: User) -> Message:
+        """Delete for everyone — clear content/media and mark as deleted."""
+        if message.file:
+            message.file.delete(save=False)
+        message.is_deleted = True
+        message.deleted_at = timezone.now()
+        message.deleted_by = deleted_by
+        message.content = ""
+        message.file = None
+        message.file_name = ""
+        message.file_size = 0
+        message.save(
+            update_fields=[
+                "is_deleted",
+                "deleted_at",
+                "deleted_by",
+                "content",
+                "file",
+                "file_name",
+                "file_size",
+                "updated_at",
+            ]
+        )
+        message.reactions.all().delete()
+        return message
+
+    @staticmethod
+    def hide_message_for_user(message: Message, user: User) -> None:
+        """Delete for me — hide only for this user."""
+        MessageHidden.objects.get_or_create(message=message, user=user)
+
+    @staticmethod
+    def toggle_reaction(message: Message, user: User, emoji: str) -> Message:
+        """Add, change, or remove a user's reaction. One reaction per user."""
+        emoji = (emoji or "").strip()
+        existing = MessageReaction.objects.filter(message=message, user=user).first()
+        if existing:
+            if existing.emoji == emoji:
+                existing.delete()
+            else:
+                existing.emoji = emoji
+                existing.save(update_fields=["emoji"])
+        else:
+            MessageReaction.objects.create(message=message, user=user, emoji=emoji)
+        return (
+            Message.objects.select_related("sender")
+            .prefetch_related("reactions__user")
+            .get(id=message.id)
+        )

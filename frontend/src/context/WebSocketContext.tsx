@@ -22,6 +22,8 @@ const WS_URL = getWebSocketUrl();
 
 type WSMessageHandler = (message: Message) => void;
 type TypingHandler = (data: { user_id: number; user_name: string; is_typing: boolean }) => void;
+type MessageDeletedHandler = (message: Message) => void;
+type MessageUpdatedHandler = (message: Message) => void;
 
 interface WebSocketContextType {
   connected: boolean;
@@ -31,6 +33,8 @@ interface WebSocketContextType {
   markRead: (conversationId: number) => void;
   onMessage: (handler: WSMessageHandler) => () => void;
   onTyping: (handler: TypingHandler) => () => void;
+  onMessageDeleted: (handler: MessageDeletedHandler) => () => void;
+  onMessageUpdated: (handler: MessageUpdatedHandler) => () => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | null>(null);
@@ -40,6 +44,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState(false);
   const messageHandlers = useRef<Set<WSMessageHandler>>(new Set());
   const typingHandlers = useRef<Set<TypingHandler>>(new Set());
+  const deletedHandlers = useRef<Set<MessageDeletedHandler>>(new Set());
+  const updatedHandlers = useRef<Set<MessageUpdatedHandler>>(new Set());
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const connect = useCallback(() => {
@@ -67,6 +73,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       const data = JSON.parse(event.data);
       if (data.type === "message" && data.message) {
         messageHandlers.current.forEach((h) => h(data.message));
+      } else if (data.type === "message_deleted" && data.message) {
+        deletedHandlers.current.forEach((h) => h(data.message));
+      } else if (data.type === "message_updated" && data.message) {
+        updatedHandlers.current.forEach((h) => h(data.message));
       } else if (data.type === "typing") {
         typingHandlers.current.forEach((h) => h(data));
       }
@@ -102,9 +112,29 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     return () => typingHandlers.current.delete(handler);
   };
 
+  const onMessageDeleted = (handler: MessageDeletedHandler) => {
+    deletedHandlers.current.add(handler);
+    return () => deletedHandlers.current.delete(handler);
+  };
+
+  const onMessageUpdated = (handler: MessageUpdatedHandler) => {
+    updatedHandlers.current.add(handler);
+    return () => updatedHandlers.current.delete(handler);
+  };
+
   return (
     <WebSocketContext.Provider
-      value={{ connected, joinConversation, leaveConversation, sendTyping, markRead, onMessage, onTyping }}
+      value={{
+        connected,
+        joinConversation,
+        leaveConversation,
+        sendTyping,
+        markRead,
+        onMessage,
+        onTyping,
+        onMessageDeleted,
+        onMessageUpdated,
+      }}
     >
       {children}
     </WebSocketContext.Provider>
