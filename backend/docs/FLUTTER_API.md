@@ -131,8 +131,10 @@ POST /auth/logout/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/chat/conversations/` | List all conversations |
-| GET | `/chat/conversations/?filter=unread` | Filter: `all` \| `unread` \| `groups` \| `favourites` |
+| GET | `/chat/conversations/?filter=unread` | Filter: `all` \| `unread` \| `groups` \| `favourites` \| `archived` \| `blocked` |
 | POST | `/chat/conversations/{id}/favourite/` | Toggle favourite (per user) |
+| POST | `/chat/conversations/{id}/archive/` | Archive/unarchive `{ "action": "archive" \| "unarchive" }` |
+| POST | `/chat/conversations/{id}/block/` | Block/unblock `{ "action": "block" \| "unblock" }` |
 | POST | `/chat/conversations/direct/` | Start 1:1 chat `{ "user_id": 2 }` |
 | POST | `/chat/conversations/group/` | Create group `{ "group_name": "Family", "participant_ids": [2,3] }` |
 | PATCH | `/chat/conversations/{id}/group/` | Update group name/avatar (admin only, multipart) |
@@ -150,29 +152,53 @@ GET /chat/conversations/?filter=all
 GET /chat/conversations/?filter=unread
 GET /chat/conversations/?filter=groups
 GET /chat/conversations/?filter=favourites
+GET /chat/conversations/?filter=archived
+GET /chat/conversations/?filter=blocked
 ```
 
 | `filter` | Meaning |
 |----------|---------|
-| `all` | All chats (favourites sorted to top) |
-| `unread` | Chats with `unread_count > 0` |
-| `groups` | Group chats only (`is_group=true`) |
-| `favourites` | Chats you marked as favourite |
+| `all` | Main inbox (excludes archived; favourites sorted to top) |
+| `unread` | Unread chats in inbox |
+| `groups` | Group chats in inbox |
+| `favourites` | Favourite chats in inbox |
+| `archived` | Archived chats only |
+| `blocked` | Chats you blocked |
 
-Each conversation includes `is_favourite: true/false`.
+Each conversation includes `is_favourite`, `is_archived`, `is_blocked`.
 
 ```http
 POST /chat/conversations/1/favourite/
 ```
 
-**Response:** updated conversation with toggled `is_favourite`.
+```http
+POST /chat/conversations/1/archive/
+{ "action": "archive" }
+```
+
+```http
+POST /chat/conversations/1/archive/
+{ "action": "unarchive" }
+```
+
+```http
+POST /chat/conversations/1/block/
+{ "action": "block" }
+```
+
+```http
+POST /chat/conversations/1/block/
+{ "action": "unblock" }
+```
+
+**Notes**
+- Archive is per-user. New messages unarchive the chat for participants again.
+- Block is per-user. Blocked users cannot **send** in that chat until they unblock.
+- Sending to a blocked chat returns `403` with message to unblock first.
 
 ```dart
-// List unread only
-final unread = await dio.get('/chat/conversations/', queryParameters: {'filter': 'unread'});
-
-// Toggle favourite
-await dio.post('/chat/conversations/$convId/favourite/');
+await dio.post('/chat/conversations/$convId/archive/', data: {'action': 'archive'});
+await dio.post('/chat/conversations/$convId/block/', data: {'action': 'block'});
 ```
 
 ### Send text message

@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from apps.chat.models import Conversation, ConversationFavourite, Message, MessageHidden, MessageReaction, MessageStatus
+from apps.chat.models import (
+    Conversation,
+    ConversationArchive,
+    ConversationBlock,
+    ConversationFavourite,
+    Message,
+    MessageHidden,
+    MessageReaction,
+    MessageStatus,
+)
 
 
 @admin.register(Conversation)
@@ -34,3 +43,13 @@ class MessageHiddenAdmin(admin.ModelAdmin):
 @admin.register(ConversationFavourite)
 class ConversationFavouriteAdmin(admin.ModelAdmin):
     list_display = ("conversation", "user", "created_at")
+
+
+@admin.register(ConversationArchive)
+class ConversationArchiveAdmin(admin.ModelAdmin):
+    list_display = ("conversation", "user", "archived_at")
+
+
+@admin.register(ConversationBlock)
+class ConversationBlockAdmin(admin.ModelAdmin):
+    list_display = ("conversation", "user", "blocked_at")

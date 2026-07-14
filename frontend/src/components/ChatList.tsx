@@ -1,5 +1,15 @@
-import { useEffect, useState } from "react";
-import { MessageCircle, MoreVertical, Search, Star, UserPlus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  Archive,
+  ArchiveRestore,
+  Ban,
+  MessageCircle,
+  MoreVertical,
+  Search,
+  ShieldOff,
+  Star,
+  UserPlus,
+} from "lucide-react";
 import { chatApi } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/context/WebSocketContext";
@@ -19,6 +29,8 @@ const FILTERS: { id: ChatListFilter; label: string }[] = [
   { id: "unread", label: "Unread" },
   { id: "favourites", label: "Favourites" },
   { id: "groups", label: "Groups" },
+  { id: "archived", label: "Archived" },
+  { id: "blocked", label: "Blocked" },
 ];
 
 interface Props {
@@ -49,7 +61,9 @@ export default function ChatList({
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<ChatListFilter>("all");
-  const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const loadConversations = (activeFilter = filter) => {
     chatApi.getConversations(activeFilter).then((res) => {
@@ -74,25 +88,80 @@ export default function ChatList({
     return () => clearInterval(interval);
   }, [connected, filter]);
 
+  useEffect(() => {
+    if (menuOpenId == null) return;
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpenId(null);
+      }
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [menuOpenId]);
+
+  const applyConversationUpdate = (updated: Conversation) => {
+    setConversations((prev) => {
+      const next = prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c));
+      const shouldRemove =
+        (filter === "archived" && !updated.is_archived) ||
+        (filter === "blocked" && !updated.is_blocked) ||
+        (filter !== "archived" && updated.is_archived) ||
+        (filter === "favourites" && !updated.is_favourite);
+      if (shouldRemove) {
+        return next.filter((c) => c.id !== updated.id);
+      }
+      return next;
+    });
+  };
+
   const handleToggleFavourite = async (e: React.MouseEvent, conv: Conversation) => {
     e.stopPropagation();
-    if (togglingId) return;
-    setTogglingId(conv.id);
+    if (busyId) return;
+    setBusyId(conv.id);
     try {
       const res = await chatApi.toggleFavourite(conv.id);
-      setConversations((prev) => {
-        const updated = prev.map((c) =>
-          c.id === conv.id ? { ...c, is_favourite: res.data.is_favourite } : c
-        );
-        if (filter === "favourites" && !res.data.is_favourite) {
-          return updated.filter((c) => c.id !== conv.id);
-        }
-        return updated;
-      });
+      applyConversationUpdate(res.data);
     } catch (err) {
       console.error(err);
     } finally {
-      setTogglingId(null);
+      setBusyId(null);
+    }
+  };
+
+  const handleArchive = async (e: React.MouseEvent, conv: Conversation) => {
+    e.stopPropagation();
+    if (busyId) return;
+    setBusyId(conv.id);
+    setMenuOpenId(null);
+    try {
+      const action = conv.is_archived ? "unarchive" : "archive";
+      const res = await chatApi.archiveConversation(conv.id, action);
+      applyConversationUpdate(res.data);
+      loadConversations(filter);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleBlock = async (e: React.MouseEvent, conv: Conversation) => {
+    e.stopPropagation();
+    if (busyId) return;
+    const action = conv.is_blocked ? "unblock" : "block";
+    if (action === "block" && !window.confirm("Block this chat? You won't be able to send messages until you unblock.")) {
+      return;
+    }
+    setBusyId(conv.id);
+    setMenuOpenId(null);
+    try {
+      const res = await chatApi.blockConversation(conv.id, action);
+      applyConversationUpdate(res.data);
+      loadConversations(filter);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -113,6 +182,17 @@ export default function ChatList({
   const getChatAvatar = (c: Conversation) => {
     if (c.is_group) return null;
     return getOtherParticipant(c, user!.id);
+  };
+
+  const emptyMessage = () => {
+    switch (filter) {
+      case "unread": return "No unread chats";
+      case "favourites": return "No favourite chats yet";
+      case "groups": return "No group chats yet";
+      case "archived": return "No archived chats";
+      case "blocked": return "No blocked chats";
+      default: return "No chats yet";
+    }
   };
 
   return (
@@ -174,12 +254,7 @@ export default function ChatList({
 
       <div className="chat-list">
         {filtered.length === 0 && (
-          <p className="chat-filter-empty">
-            {filter === "unread" && "No unread chats"}
-            {filter === "favourites" && "No favourite chats yet"}
-            {filter === "groups" && "No group chats yet"}
-            {filter === "all" && "No chats yet"}
-          </p>
+          <p className="chat-filter-empty">{emptyMessage()}</p>
         )}
         {filtered.map((c) => {
           const avatarUser = getChatAvatar(c);
@@ -192,7 +267,7 @@ export default function ChatList({
           return (
             <div
               key={c.id}
-              className={`chat-item ${activeId === c.id ? "active" : ""}`}
+              className={`chat-item ${activeId === c.id ? "active" : ""} ${c.is_blocked ? "blocked" : ""}`}
               onClick={() => onSelect(c)}
             >
               {avatarUser ? (
@@ -204,6 +279,7 @@ export default function ChatList({
                 <div className="chat-info-top">
                   <span className="chat-name">
                     {c.is_favourite && <Star size={12} className="favourite-inline-star" fill="currentColor" />}
+                    {c.is_blocked && <Ban size={12} className="blocked-inline-icon" />}
                     {getChatName(c)}
                   </span>
                   {lastMsg && (
@@ -211,23 +287,49 @@ export default function ChatList({
                   )}
                 </div>
                 <div className="chat-info-top">
-                  <span className="chat-preview">{preview}</span>
+                  <span className="chat-preview">
+                    {c.is_blocked ? "Blocked" : preview}
+                  </span>
                   <span className="chat-item-actions">
                     <button
                       type="button"
                       className={`favourite-btn ${c.is_favourite ? "active" : ""}`}
                       title={c.is_favourite ? "Remove from favourites" : "Add to favourites"}
-                      disabled={togglingId === c.id}
+                      disabled={busyId === c.id}
                       onClick={(e) => handleToggleFavourite(e, c)}
                     >
                       <Star size={16} fill={c.is_favourite ? "currentColor" : "none"} />
                     </button>
-                    {c.unread_count > 0 && (
+                    <button
+                      type="button"
+                      className="chat-more-btn"
+                      title="Chat options"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuOpenId((id) => (id === c.id ? null : c.id));
+                      }}
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                    {c.unread_count > 0 && !c.is_blocked && (
                       <span className="unread-badge">{c.unread_count}</span>
                     )}
                   </span>
                 </div>
               </div>
+
+              {menuOpenId === c.id && (
+                <div className="chat-item-menu" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+                  <button type="button" onClick={(e) => handleArchive(e, c)} disabled={busyId === c.id}>
+                    {c.is_archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
+                    {c.is_archived ? "Unarchive" : "Archive"}
+                  </button>
+                  <button type="button" onClick={(e) => handleBlock(e, c)} disabled={busyId === c.id}>
+                    {c.is_blocked ? <ShieldOff size={16} /> : <Ban size={16} />}
+                    {c.is_blocked ? "Unblock" : "Block"}
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}

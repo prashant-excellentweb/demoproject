@@ -6,6 +6,8 @@ from django.utils import timezone
 
 from apps.chat.models import (
     Conversation,
+    ConversationArchive,
+    ConversationBlock,
     ConversationFavourite,
     Message,
     MessageHidden,
@@ -20,7 +22,16 @@ class ConversationRepository:
     FILTER_UNREAD = "unread"
     FILTER_GROUPS = "groups"
     FILTER_FAVOURITES = "favourites"
-    VALID_FILTERS = {FILTER_ALL, FILTER_UNREAD, FILTER_GROUPS, FILTER_FAVOURITES}
+    FILTER_ARCHIVED = "archived"
+    FILTER_BLOCKED = "blocked"
+    VALID_FILTERS = {
+        FILTER_ALL,
+        FILTER_UNREAD,
+        FILTER_GROUPS,
+        FILTER_FAVOURITES,
+        FILTER_ARCHIVED,
+        FILTER_BLOCKED,
+    }
 
     @staticmethod
     def get_user_conversations(user: User, filter_by: str = "all"):
@@ -29,6 +40,14 @@ class ConversationRepository:
             filter_by = ConversationRepository.FILTER_ALL
 
         favourite_exists = ConversationFavourite.objects.filter(
+            conversation_id=OuterRef("pk"),
+            user=user,
+        )
+        archived_exists = ConversationArchive.objects.filter(
+            conversation_id=OuterRef("pk"),
+            user=user,
+        )
+        blocked_exists = ConversationBlock.objects.filter(
             conversation_id=OuterRef("pk"),
             user=user,
         )
@@ -63,15 +82,24 @@ class ConversationRepository:
                 ),
                 last_message_time=Max("messages__created_at"),
                 is_favourite=Exists(favourite_exists),
+                is_archived=Exists(archived_exists),
+                is_blocked=Exists(blocked_exists),
             )
         )
 
-        if filter_by == ConversationRepository.FILTER_UNREAD:
-            qs = qs.filter(unread_count__gt=0)
-        elif filter_by == ConversationRepository.FILTER_GROUPS:
-            qs = qs.filter(is_group=True)
-        elif filter_by == ConversationRepository.FILTER_FAVOURITES:
-            qs = qs.filter(is_favourite=True)
+        if filter_by == ConversationRepository.FILTER_ARCHIVED:
+            qs = qs.filter(is_archived=True)
+        elif filter_by == ConversationRepository.FILTER_BLOCKED:
+            qs = qs.filter(is_blocked=True)
+        else:
+            # Main inbox filters hide archived chats
+            qs = qs.filter(is_archived=False)
+            if filter_by == ConversationRepository.FILTER_UNREAD:
+                qs = qs.filter(unread_count__gt=0)
+            elif filter_by == ConversationRepository.FILTER_GROUPS:
+                qs = qs.filter(is_group=True)
+            elif filter_by == ConversationRepository.FILTER_FAVOURITES:
+                qs = qs.filter(is_favourite=True)
 
         return qs.order_by(
             Case(When(is_favourite=True, then=Value(0)), default=Value(1), output_field=IntegerField()),
@@ -89,6 +117,31 @@ class ConversationRepository:
             fav.delete()
             return False
         return True
+
+    @staticmethod
+    def set_archived(conversation: Conversation, user: User, archived: bool) -> bool:
+        if archived:
+            ConversationArchive.objects.get_or_create(conversation=conversation, user=user)
+            return True
+        ConversationArchive.objects.filter(conversation=conversation, user=user).delete()
+        return False
+
+    @staticmethod
+    def set_blocked(conversation: Conversation, user: User, blocked: bool) -> bool:
+        if blocked:
+            ConversationBlock.objects.get_or_create(conversation=conversation, user=user)
+            return True
+        ConversationBlock.objects.filter(conversation=conversation, user=user).delete()
+        return False
+
+    @staticmethod
+    def is_blocked_by(conversation: Conversation, user: User) -> bool:
+        return ConversationBlock.objects.filter(conversation=conversation, user=user).exists()
+
+    @staticmethod
+    def unarchive_for_participants(conversation: Conversation) -> None:
+        """Incoming/outgoing activity restores chat to main list for everyone."""
+        ConversationArchive.objects.filter(conversation=conversation).delete()
 
     @staticmethod
     def get_or_create_direct(user1: User, user2: User) -> Conversation:
@@ -155,6 +208,8 @@ class MessageRepository:
         for participant in conversation.participants.exclude(id=sender.id):
             MessageStatus.objects.create(message=message, user=participant)
 
+        # New activity brings archived chats back into the main inbox
+        ConversationRepository.unarchive_for_participants(conversation)
         return message
 
     @staticmethod

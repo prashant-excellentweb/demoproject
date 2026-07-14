@@ -169,3 +169,53 @@ class ConversationFavourite(models.Model):
 
     def __str__(self):
         return f"user {self.user_id} favourited conversation {self.conversation_id}"
+
+
+class ConversationArchive(models.Model):
+    """Per-user archived chat — hidden from main list until unarchived."""
+
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name="archived_by",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="archived_conversations",
+    )
+    archived_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("conversation", "user")
+        indexes = [
+            models.Index(fields=["user", "-archived_at"]),
+        ]
+
+    def __str__(self):
+        return f"user {self.user_id} archived conversation {self.conversation_id}"
+
+
+class ConversationBlock(models.Model):
+    """Per-user blocked chat — current user cannot send; chat is blocked for them only."""
+
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name="blocked_by",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="blocked_conversations",
+    )
+    blocked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("conversation", "user")
+        indexes = [
+            models.Index(fields=["user", "-blocked_at"]),
+        ]
+
+    def __str__(self):
+        return f"user {self.user_id} blocked conversation {self.conversation_id}"

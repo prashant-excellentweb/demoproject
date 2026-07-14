@@ -98,6 +98,12 @@ class ReactToMessageSerializer(serializers.Serializer):
         return value
 
 
+class ConversationActionSerializer(serializers.Serializer):
+    """Shared body for archive/block endpoints."""
+
+    action = serializers.ChoiceField(choices=("archive", "unarchive", "block", "unblock"))
+
+
 class DeleteMessageSerializer(serializers.Serializer):
     delete_for = serializers.ChoiceField(
         choices=("me", "everyone"),
@@ -113,6 +119,8 @@ class ConversationSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     is_admin = serializers.SerializerMethodField()
     is_favourite = serializers.SerializerMethodField()
+    is_archived = serializers.SerializerMethodField()
+    is_blocked = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
@@ -126,6 +134,8 @@ class ConversationSerializer(serializers.ModelSerializer):
             "created_by",
             "is_admin",
             "is_favourite",
+            "is_archived",
+            "is_blocked",
             "last_message",
             "unread_count",
             "created_at",
@@ -145,6 +155,22 @@ class ConversationSerializer(serializers.ModelSerializer):
         if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
             return False
         return obj.favourited_by.filter(user=request.user).exists()
+
+    def get_is_archived(self, obj):
+        if hasattr(obj, "is_archived"):
+            return bool(obj.is_archived)
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return False
+        return obj.archived_by.filter(user=request.user).exists()
+
+    def get_is_blocked(self, obj):
+        if hasattr(obj, "is_blocked"):
+            return bool(obj.is_blocked)
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return False
+        return obj.blocked_by.filter(user=request.user).exists()
 
     def get_last_message(self, obj):
         latest = getattr(obj, "latest_messages", None)

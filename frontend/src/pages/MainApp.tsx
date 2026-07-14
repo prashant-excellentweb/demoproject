@@ -28,9 +28,9 @@ export default function MainApp() {
       return;
     }
     setActiveConv((current) => {
-      if (!current) return convs[0];
+      if (!current) return convs[0] ?? null;
       const updated = convs.find((c) => c.id === current.id);
-      return updated ?? convs[0];
+      return updated ?? convs[0] ?? null;
     });
   }, []);
 

@@ -1,6 +1,8 @@
 from django.urls import path
 
 from apps.chat.views import (
+    ArchiveConversationView,
+    BlockConversationView,
     ConversationListView,
     CreateDirectChatView,
     CreateGroupView,
@@ -22,6 +24,16 @@ urlpatterns = [
         "conversations/<int:conversation_id>/favourite/",
         ToggleFavouriteView.as_view(),
         name="toggle-favourite",
+    ),
+    path(
+        "conversations/<int:conversation_id>/archive/",
+        ArchiveConversationView.as_view(),
+        name="archive-conversation",
+    ),
+    path(
+        "conversations/<int:conversation_id>/block/",
+        BlockConversationView.as_view(),
+        name="block-conversation",
     ),
     path("conversations/<int:conversation_id>/group/", UpdateGroupView.as_view(), name="update-group"),
     path(

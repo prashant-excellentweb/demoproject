@@ -64,6 +64,18 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     return isGroupAdmin(conversation, user!.id);
   }, [user, conversation]);
 
+  const handleUnblock = useCallback(async () => {
+    try {
+      const res = await chatApi.blockConversation(conversation.id, "unblock");
+      onConversationUpdate(res.data);
+      onRefreshList();
+    } catch (e) {
+      console.error(e);
+    }
+  }, [conversation.id, onConversationUpdate, onRefreshList]);
+
+  const isBlocked = conversation.is_blocked === true;
+
   const other = conversation.is_group
     ? null
     : getOtherParticipant(conversation, user!.id);
@@ -208,7 +220,9 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
           onClick={() => conversation.is_group && setShowGroupInfo(true)}
         >
           <h3>{chatName}</h3>
-          <p className={other?.is_online ? "online-dot" : ""}>{statusText}</p>
+          <p className={other?.is_online ? "online-dot" : ""}>
+            {isBlocked ? "Blocked" : statusText}
+          </p>
         </div>
         <button type="button" className="icon-btn"><Search size={20} /></button>
         <button type="button" className="icon-btn"><Phone size={20} /></button>
@@ -232,6 +246,13 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
         />
       )}
 
+      {isBlocked && (
+        <div className="blocked-banner">
+          <span>You blocked this chat.</span>
+          <button type="button" onClick={handleUnblock}>Unblock</button>
+        </div>
+      )}
+
       <div className="messages-area">
         {messages.map((msg) => (
           <MessageBubble
@@ -251,37 +272,43 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
         <div className="typing-indicator">{typingUser} is typing...</div>
       )}
 
-      <div className="message-input-area">
-        <EmojiPicker
-          open={emojiOpen}
-          onToggle={() => setEmojiOpen((o) => !o)}
-          onClose={() => setEmojiOpen(false)}
-          onSelect={insertEmoji}
-        />
-        <button type="button" className="attach-btn" onClick={() => fileInputRef.current?.click()}>
-          <Paperclip size={22} />
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          hidden
-          accept="image/*,video/*,.pdf,.doc,.docx,.txt,.xls,.xlsx"
-          onChange={handleFile}
-        />
-        <div className="message-input-wrapper">
-          <textarea
-            ref={textareaRef}
-            placeholder="Type a message"
-            value={text}
-            onChange={(e) => handleTextChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={1}
+      {!isBlocked ? (
+        <div className="message-input-area">
+          <EmojiPicker
+            open={emojiOpen}
+            onToggle={() => setEmojiOpen((o) => !o)}
+            onClose={() => setEmojiOpen(false)}
+            onSelect={insertEmoji}
           />
+          <button type="button" className="attach-btn" onClick={() => fileInputRef.current?.click()}>
+            <Paperclip size={22} />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            hidden
+            accept="image/*,video/*,.pdf,.doc,.docx,.txt,.xls,.xlsx"
+            onChange={handleFile}
+          />
+          <div className="message-input-wrapper">
+            <textarea
+              ref={textareaRef}
+              placeholder="Type a message"
+              value={text}
+              onChange={(e) => handleTextChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={1}
+            />
+          </div>
+          <button type="button" className="send-btn" onClick={handleSend} disabled={!text.trim() || sending}>
+            <Send size={20} />
+          </button>
         </div>
-        <button type="button" className="send-btn" onClick={handleSend} disabled={!text.trim() || sending}>
-          <Send size={20} />
-        </button>
-      </div>
+      ) : (
+        <div className="message-input-area blocked-input">
+          <p>Unblock this chat to send messages.</p>
+        </div>
+      )}
     </div>
   );
 }

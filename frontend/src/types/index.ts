@@ -44,13 +44,15 @@ export interface Conversation {
   created_by?: number | null;
   is_admin?: boolean;
   is_favourite?: boolean;
+  is_archived?: boolean;
+  is_blocked?: boolean;
   last_message: Message | null;
   unread_count: number;
   created_at: string;
   updated_at: string;
 }
 
-export type ChatListFilter = "all" | "unread" | "groups" | "favourites";
+export type ChatListFilter = "all" | "unread" | "groups" | "favourites" | "archived" | "blocked";
 
 export interface Status {
   id: number;

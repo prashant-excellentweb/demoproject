@@ -86,6 +86,10 @@ export const chatApi = {
     api.post<Conversation>("/chat/conversations/group/", { group_name, participant_ids }),
   toggleFavourite: (conversationId: number) =>
     api.post<Conversation>(`/chat/conversations/${conversationId}/favourite/`),
+  archiveConversation: (conversationId: number, action: "archive" | "unarchive") =>
+    api.post<Conversation>(`/chat/conversations/${conversationId}/archive/`, { action }),
+  blockConversation: (conversationId: number, action: "block" | "unblock") =>
+    api.post<Conversation>(`/chat/conversations/${conversationId}/block/`, { action }),
   updateGroup: (conversationId: number, data: FormData) =>
     api.patch<Conversation>(`/chat/conversations/${conversationId}/group/`, data, {
       headers: { "Content-Type": "multipart/form-data" },

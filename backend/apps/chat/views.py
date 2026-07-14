@@ -7,6 +7,7 @@ from apps.chat.consumers import broadcast_message_deleted, broadcast_message_upd
 from apps.chat.models import Conversation, Message
 from apps.chat.repositories.conversation_repository import ConversationRepository, MessageRepository
 from apps.chat.serializers import (
+    ConversationActionSerializer,
     ConversationSerializer,
     CreateDirectChatSerializer,
     CreateGroupSerializer,
@@ -34,14 +35,17 @@ class ConversationListView(APIView):
     @extend_schema(
         tags=["Chat"],
         summary="List conversations",
-        description="Filter with `?filter=all|unread|groups|favourites`. Favourites are sorted to the top.",
+        description=(
+            "Filter with `?filter=all|unread|groups|favourites|archived|blocked`. "
+            "Archived chats are excluded from main inbox filters."
+        ),
         parameters=[
             OpenApiParameter(
                 name="filter",
                 type=str,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                enum=["all", "unread", "groups", "favourites"],
+                enum=["all", "unread", "groups", "favourites", "archived", "blocked"],
                 description="Chat list filter tab",
             ),
         ],
@@ -55,6 +59,24 @@ class ConversationListView(APIView):
         )
 
 
+def _serialize_user_conversation(request, conversation_id: int) -> dict:
+    conversations = ConversationRepository.get_user_conversations(request.user, filter_by="all")
+    # Prefer annotated row from inbox; fall back to archived/blocked lookup
+    conv = conversations.filter(id=conversation_id).first()
+    if not conv:
+        for alt in ("archived", "blocked"):
+            conv = (
+                ConversationRepository.get_user_conversations(request.user, filter_by=alt)
+                .filter(id=conversation_id)
+                .first()
+            )
+            if conv:
+                break
+    if not conv:
+        conv = Conversation.objects.get(id=conversation_id)
+    return ConversationSerializer(conv, context={"request": request}).data
+
+
 class ToggleFavouriteView(APIView):
     @extend_schema(tags=["Chat"], summary="Toggle favourite chat")
     def post(self, request, conversation_id):
@@ -66,14 +88,69 @@ class ToggleFavouriteView(APIView):
             return api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
 
         is_favourite = ConversationRepository.toggle_favourite(conv, request.user)
-        # Re-fetch with annotations for consistent response
-        conversations = ConversationRepository.get_user_conversations(request.user, filter_by="all")
-        conv = conversations.filter(id=conversation_id).first() or conv
-        data = ConversationSerializer(conv, context={"request": request}).data
+        data = _serialize_user_conversation(request, conversation_id)
         data["is_favourite"] = is_favourite
         return api_success(
             data=data,
             message="Added to favourites." if is_favourite else "Removed from favourites.",
+        )
+
+
+class ArchiveConversationView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="Archive or unarchive chat",
+        request=ConversationActionSerializer,
+    )
+    def post(self, request, conversation_id):
+        try:
+            conv = Conversation.objects.get(id=conversation_id)
+        except Conversation.DoesNotExist:
+            return api_error(message="Conversation not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if not ConversationRepository.user_in_conversation(conv, request.user):
+            return api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
+
+        action = request.data.get("action", "archive")
+        if action not in ("archive", "unarchive"):
+            return api_error(
+                message="action must be 'archive' or 'unarchive'.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        is_archived = ConversationRepository.set_archived(conv, request.user, archived=(action == "archive"))
+        data = _serialize_user_conversation(request, conversation_id)
+        data["is_archived"] = is_archived
+        return api_success(
+            data=data,
+            message="Chat archived." if is_archived else "Chat unarchived.",
+        )
+
+
+class BlockConversationView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="Block or unblock chat",
+        request=ConversationActionSerializer,
+    )
+    def post(self, request, conversation_id):
+        try:
+            conv = Conversation.objects.get(id=conversation_id)
+        except Conversation.DoesNotExist:
+            return api_error(message="Conversation not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if not ConversationRepository.user_in_conversation(conv, request.user):
+            return api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
+
+        action = request.data.get("action", "block")
+        if action not in ("block", "unblock"):
+            return api_error(
+                message="action must be 'block' or 'unblock'.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        is_blocked = ConversationRepository.set_blocked(conv, request.user, blocked=(action == "block"))
+        data = _serialize_user_conversation(request, conversation_id)
+        data["is_blocked"] = is_blocked
+        return api_success(
+            data=data,
+            message="Chat blocked." if is_blocked else "Chat unblocked.",
         )
 
 
@@ -232,6 +309,11 @@ class SendMessageView(APIView):
             return api_error(message="Conversation not found.", status_code=status.HTTP_404_NOT_FOUND)
         if not ConversationRepository.user_in_conversation(conv, request.user):
             return api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
+        if ConversationRepository.is_blocked_by(conv, request.user):
+            return api_error(
+                message="You blocked this chat. Unblock to send messages.",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
 
         serializer = SendMessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

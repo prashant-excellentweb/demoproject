@@ -8,14 +8,16 @@ This app’s REST + WebSocket contract is documented for Flutter and web clients
 
 ## Chat list filters
 
-Tabs: **All** · **Unread** · **Favourites** · **Groups**
+Tabs: **All** · **Unread** · **Favourites** · **Groups** · **Archived** · **Blocked**
 
 | Action | API |
 |--------|-----|
-| List with filter | `GET /chat/conversations/?filter=all\|unread\|groups\|favourites` |
+| List with filter | `GET /chat/conversations/?filter=all\|unread\|groups\|favourites\|archived\|blocked` |
 | Toggle favourite | `POST /chat/conversations/{id}/favourite/` |
+| Archive / unarchive | `POST /chat/conversations/{id}/archive/` body `{ "action": "archive" \| "unarchive" }` |
+| Block / unblock | `POST /chat/conversations/{id}/block/` body `{ "action": "block" \| "unblock" }` |
 
-Conversation payload includes `is_favourite`. Favourites are sorted to the top in the All tab.
+Conversation payload includes `is_favourite`, `is_archived`, `is_blocked`. Archived chats are hidden from the main inbox filters.
 
 ## Message delete (web + Flutter)
 
