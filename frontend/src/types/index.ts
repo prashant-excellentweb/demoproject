@@ -43,11 +43,14 @@ export interface Conversation {
   group_avatar_url?: string | null;
   created_by?: number | null;
   is_admin?: boolean;
+  is_favourite?: boolean;
   last_message: Message | null;
   unread_count: number;
   created_at: string;
   updated_at: string;
 }
+
+export type ChatListFilter = "all" | "unread" | "groups" | "favourites";
 
 export interface Status {
   id: number;

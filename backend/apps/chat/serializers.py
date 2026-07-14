@@ -112,6 +112,7 @@ class ConversationSerializer(serializers.ModelSerializer):
     group_avatar_url = serializers.SerializerMethodField()
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     is_admin = serializers.SerializerMethodField()
+    is_favourite = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
@@ -124,6 +125,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             "group_avatar_url",
             "created_by",
             "is_admin",
+            "is_favourite",
             "last_message",
             "unread_count",
             "created_at",
@@ -135,6 +137,14 @@ class ConversationSerializer(serializers.ModelSerializer):
         if not request or not obj.is_group:
             return False
         return obj.is_group_admin(request.user)
+
+    def get_is_favourite(self, obj):
+        if hasattr(obj, "is_favourite"):
+            return bool(obj.is_favourite)
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return False
+        return obj.favourited_by.filter(user=request.user).exists()
 
     def get_last_message(self, obj):
         latest = getattr(obj, "latest_messages", None)

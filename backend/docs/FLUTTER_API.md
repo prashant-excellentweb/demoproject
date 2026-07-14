@@ -131,6 +131,8 @@ POST /auth/logout/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/chat/conversations/` | List all conversations |
+| GET | `/chat/conversations/?filter=unread` | Filter: `all` \| `unread` \| `groups` \| `favourites` |
+| POST | `/chat/conversations/{id}/favourite/` | Toggle favourite (per user) |
 | POST | `/chat/conversations/direct/` | Start 1:1 chat `{ "user_id": 2 }` |
 | POST | `/chat/conversations/group/` | Create group `{ "group_name": "Family", "participant_ids": [2,3] }` |
 | PATCH | `/chat/conversations/{id}/group/` | Update group name/avatar (admin only, multipart) |
@@ -140,6 +142,38 @@ POST /auth/logout/
 | DELETE | `/chat/conversations/{id}/messages/{message_id}/` | Delete for me **or** everyone |
 | POST | `/chat/conversations/{id}/messages/{message_id}/react/` | Add/toggle emoji reaction |
 | POST | `/chat/conversations/{id}/read/` | Mark as read |
+
+### Chat list filters & favourites
+
+```http
+GET /chat/conversations/?filter=all
+GET /chat/conversations/?filter=unread
+GET /chat/conversations/?filter=groups
+GET /chat/conversations/?filter=favourites
+```
+
+| `filter` | Meaning |
+|----------|---------|
+| `all` | All chats (favourites sorted to top) |
+| `unread` | Chats with `unread_count > 0` |
+| `groups` | Group chats only (`is_group=true`) |
+| `favourites` | Chats you marked as favourite |
+
+Each conversation includes `is_favourite: true/false`.
+
+```http
+POST /chat/conversations/1/favourite/
+```
+
+**Response:** updated conversation with toggled `is_favourite`.
+
+```dart
+// List unread only
+final unread = await dio.get('/chat/conversations/', queryParameters: {'filter': 'unread'});
+
+// Toggle favourite
+await dio.post('/chat/conversations/$convId/favourite/');
+```
 
 ### Send text message
 ```http

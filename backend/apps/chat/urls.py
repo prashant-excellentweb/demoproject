@@ -10,6 +10,7 @@ from apps.chat.views import (
     ReactToMessageView,
     RemoveGroupMemberView,
     SendMessageView,
+    ToggleFavouriteView,
     UpdateGroupView,
 )
 
@@ -17,6 +18,11 @@ urlpatterns = [
     path("conversations/", ConversationListView.as_view(), name="conversation-list"),
     path("conversations/direct/", CreateDirectChatView.as_view(), name="create-direct"),
     path("conversations/group/", CreateGroupView.as_view(), name="create-group"),
+    path(
+        "conversations/<int:conversation_id>/favourite/",
+        ToggleFavouriteView.as_view(),
+        name="toggle-favourite",
+    ),
     path("conversations/<int:conversation_id>/group/", UpdateGroupView.as_view(), name="update-group"),
     path(
         "conversations/<int:conversation_id>/members/<int:user_id>/remove/",

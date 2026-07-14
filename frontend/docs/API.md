@@ -6,6 +6,17 @@ This app’s REST + WebSocket contract is documented for Flutter and web clients
 - **Swagger UI:** http://localhost:9000/api/docs/
 - **OpenAPI YAML:** [`../backend/docs/openapi.yaml`](../backend/docs/openapi.yaml)
 
+## Chat list filters
+
+Tabs: **All** · **Unread** · **Favourites** · **Groups**
+
+| Action | API |
+|--------|-----|
+| List with filter | `GET /chat/conversations/?filter=all\|unread\|groups\|favourites` |
+| Toggle favourite | `POST /chat/conversations/{id}/favourite/` |
+
+Conversation payload includes `is_favourite`. Favourites are sorted to the top in the All tab.
+
 ## Message delete (web + Flutter)
 
 | Action | API | UI |

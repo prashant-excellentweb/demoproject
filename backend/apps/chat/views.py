@@ -31,12 +31,49 @@ def _get_group_conversation(request, conversation_id):
 
 
 class ConversationListView(APIView):
-    @extend_schema(tags=["Chat"], summary="List conversations")
+    @extend_schema(
+        tags=["Chat"],
+        summary="List conversations",
+        description="Filter with `?filter=all|unread|groups|favourites`. Favourites are sorted to the top.",
+        parameters=[
+            OpenApiParameter(
+                name="filter",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                enum=["all", "unread", "groups", "favourites"],
+                description="Chat list filter tab",
+            ),
+        ],
+    )
     def get(self, request):
-        conversations = ConversationRepository.get_user_conversations(request.user)
+        filter_by = request.query_params.get("filter", "all")
+        conversations = ConversationRepository.get_user_conversations(request.user, filter_by=filter_by)
         return api_success(
             data=ConversationSerializer(conversations, many=True, context={"request": request}).data,
             message="Conversations fetched successfully.",
+        )
+
+
+class ToggleFavouriteView(APIView):
+    @extend_schema(tags=["Chat"], summary="Toggle favourite chat")
+    def post(self, request, conversation_id):
+        try:
+            conv = Conversation.objects.get(id=conversation_id)
+        except Conversation.DoesNotExist:
+            return api_error(message="Conversation not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if not ConversationRepository.user_in_conversation(conv, request.user):
+            return api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
+
+        is_favourite = ConversationRepository.toggle_favourite(conv, request.user)
+        # Re-fetch with annotations for consistent response
+        conversations = ConversationRepository.get_user_conversations(request.user, filter_by="all")
+        conv = conversations.filter(id=conversation_id).first() or conv
+        data = ConversationSerializer(conv, context={"request": request}).data
+        data["is_favourite"] = is_favourite
+        return api_success(
+            data=data,
+            message="Added to favourites." if is_favourite else "Removed from favourites.",
         )
 
 

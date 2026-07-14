@@ -144,3 +144,28 @@ class MessageHidden(models.Model):
 
     def __str__(self):
         return f"user {self.user_id} hid message {self.message_id}"
+
+
+class ConversationFavourite(models.Model):
+    """Per-user favourite chat (direct or group)."""
+
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name="favourited_by",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="favourite_conversations",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("conversation", "user")
+        indexes = [
+            models.Index(fields=["user", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"user {self.user_id} favourited conversation {self.conversation_id}"

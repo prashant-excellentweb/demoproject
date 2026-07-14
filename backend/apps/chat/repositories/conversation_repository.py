@@ -1,23 +1,48 @@
 import os
 
 from django.db import transaction
-from django.db.models import Count, Max, Prefetch, Q
+from django.db.models import Case, Count, Exists, IntegerField, Max, OuterRef, Prefetch, Q, Value, When
 from django.utils import timezone
 
-from apps.chat.models import Conversation, Message, MessageHidden, MessageReaction, MessageStatus
+from apps.chat.models import (
+    Conversation,
+    ConversationFavourite,
+    Message,
+    MessageHidden,
+    MessageReaction,
+    MessageStatus,
+)
 from apps.users.models import User
 
 
 class ConversationRepository:
+    FILTER_ALL = "all"
+    FILTER_UNREAD = "unread"
+    FILTER_GROUPS = "groups"
+    FILTER_FAVOURITES = "favourites"
+    VALID_FILTERS = {FILTER_ALL, FILTER_UNREAD, FILTER_GROUPS, FILTER_FAVOURITES}
+
     @staticmethod
-    def get_user_conversations(user: User):
-        return (
+    def get_user_conversations(user: User, filter_by: str = "all"):
+        filter_by = (filter_by or "all").lower().strip()
+        if filter_by not in ConversationRepository.VALID_FILTERS:
+            filter_by = ConversationRepository.FILTER_ALL
+
+        favourite_exists = ConversationFavourite.objects.filter(
+            conversation_id=OuterRef("pk"),
+            user=user,
+        )
+
+        qs = (
             Conversation.objects.filter(participants=user)
             .select_related("created_by")
             .prefetch_related(
-                Prefetch("participants", queryset=User.objects.only(
-                    "id", "display_name", "phone_number", "avatar", "is_online", "last_seen", "about"
-                )),
+                Prefetch(
+                    "participants",
+                    queryset=User.objects.only(
+                        "id", "display_name", "phone_number", "avatar", "is_online", "last_seen", "about"
+                    ),
+                ),
                 Prefetch(
                     "messages",
                     queryset=Message.objects.select_related("sender")
@@ -34,11 +59,36 @@ class ConversationRepository:
                     & Q(messages__is_deleted=False)
                     & ~Q(messages__sender=user)
                     & ~Q(messages__hidden_for__user=user),
+                    distinct=True,
                 ),
                 last_message_time=Max("messages__created_at"),
+                is_favourite=Exists(favourite_exists),
             )
-            .order_by("-updated_at")
         )
+
+        if filter_by == ConversationRepository.FILTER_UNREAD:
+            qs = qs.filter(unread_count__gt=0)
+        elif filter_by == ConversationRepository.FILTER_GROUPS:
+            qs = qs.filter(is_group=True)
+        elif filter_by == ConversationRepository.FILTER_FAVOURITES:
+            qs = qs.filter(is_favourite=True)
+
+        return qs.order_by(
+            Case(When(is_favourite=True, then=Value(0)), default=Value(1), output_field=IntegerField()),
+            "-updated_at",
+        )
+
+    @staticmethod
+    def toggle_favourite(conversation: Conversation, user: User) -> bool:
+        """Returns True if now favourited, False if removed."""
+        fav, created = ConversationFavourite.objects.get_or_create(
+            conversation=conversation,
+            user=user,
+        )
+        if not created:
+            fav.delete()
+            return False
+        return True
 
     @staticmethod
     def get_or_create_direct(user1: User, user2: User) -> Conversation:

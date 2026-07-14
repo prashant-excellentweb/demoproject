@@ -1,5 +1,5 @@
 import axios, { type AxiosResponse } from "axios";
-import type { Conversation, Message, Status, StatusFeed, User } from "@/types";
+import type { Conversation, ChatListFilter, Message, Status, StatusFeed, User } from "@/types";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -78,11 +78,14 @@ export const authApi = {
 };
 
 export const chatApi = {
-  getConversations: () => api.get<Conversation[]>("/chat/conversations/"),
+  getConversations: (filter: ChatListFilter = "all") =>
+    api.get<Conversation[]>("/chat/conversations/", { params: { filter } }),
   createDirectChat: (user_id: number) =>
     api.post<Conversation>("/chat/conversations/direct/", { user_id }),
   createGroup: (group_name: string, participant_ids: number[]) =>
     api.post<Conversation>("/chat/conversations/group/", { group_name, participant_ids }),
+  toggleFavourite: (conversationId: number) =>
+    api.post<Conversation>(`/chat/conversations/${conversationId}/favourite/`),
   updateGroup: (conversationId: number, data: FormData) =>
     api.patch<Conversation>(`/chat/conversations/${conversationId}/group/`, data, {
       headers: { "Content-Type": "multipart/form-data" },
