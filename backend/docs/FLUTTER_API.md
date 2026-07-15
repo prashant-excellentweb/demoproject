@@ -1,5 +1,8 @@
 # ChatApp API — Flutter Integration Guide
 
+> **Chat + WebSocket implementation (screens, flows, Dio + `web_socket_channel`):**  
+> see **[`FLUTTER_CHAT.md`](./FLUTTER_CHAT.md)** — conversation APIs, when to use REST vs WebSocket, and copy-paste Flutter patterns.
+
 ## Standard response (every API)
 
 ```json

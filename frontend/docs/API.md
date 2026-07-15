@@ -3,6 +3,7 @@
 This app’s REST + WebSocket contract is documented for Flutter and web clients here:
 
 - **Flutter guide (payloads, examples):** [`../backend/docs/FLUTTER_API.md`](../backend/docs/FLUTTER_API.md)
+- **Flutter chat + WebSocket guide:** [`../backend/docs/FLUTTER_CHAT.md`](../backend/docs/FLUTTER_CHAT.md)
 - **Swagger UI:** http://localhost:9000/api/docs/
 - **OpenAPI YAML:** [`../backend/docs/openapi.yaml`](../backend/docs/openapi.yaml)
 
