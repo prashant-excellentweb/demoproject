@@ -46,6 +46,7 @@ export interface Conversation {
   is_favourite?: boolean;
   is_archived?: boolean;
   is_blocked?: boolean;
+  is_pinned?: boolean;
   last_message: Message | null;
   unread_count: number;
   created_at: string;

@@ -75,6 +75,11 @@ export const authApi = {
     }),
   searchUsers: (q: string) => api.get<User[]>("/auth/search/", { params: { q } }),
   logout: () => api.post<null>("/auth/logout/"),
+  deleteAccount: () => api.delete<null>("/auth/profile/"),
+  reportUser: (
+    userId: number,
+    data: { reason: string; details?: string; conversation_id?: number }
+  ) => api.post<{ id: number; reason: string }>(`/auth/users/${userId}/report/`, data),
 };
 
 export const chatApi = {
@@ -90,6 +95,8 @@ export const chatApi = {
     api.post<Conversation>(`/chat/conversations/${conversationId}/archive/`, { action }),
   blockConversation: (conversationId: number, action: "block" | "unblock") =>
     api.post<Conversation>(`/chat/conversations/${conversationId}/block/`, { action }),
+  pinConversation: (conversationId: number, action: "pin" | "unpin") =>
+    api.post<Conversation>(`/chat/conversations/${conversationId}/pin/`, { action }),
   updateGroup: (conversationId: number, data: FormData) =>
     api.patch<Conversation>(`/chat/conversations/${conversationId}/group/`, data, {
       headers: { "Content-Type": "multipart/form-data" },

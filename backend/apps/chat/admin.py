@@ -5,6 +5,7 @@ from apps.chat.models import (
     ConversationArchive,
     ConversationBlock,
     ConversationFavourite,
+    ConversationPin,
     Message,
     MessageHidden,
     MessageReaction,
@@ -53,3 +54,8 @@ class ConversationArchiveAdmin(admin.ModelAdmin):
 @admin.register(ConversationBlock)
 class ConversationBlockAdmin(admin.ModelAdmin):
     list_display = ("conversation", "user", "blocked_at")
+
+
+@admin.register(ConversationPin)
+class ConversationPinAdmin(admin.ModelAdmin):
+    list_display = ("conversation", "user", "pinned_at")

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ArrowLeft, Camera, LogOut } from "lucide-react";
+import { ArrowLeft, Camera, LogOut, Trash2 } from "lucide-react";
 import { authApi } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import Avatar from "./Avatar";
@@ -13,6 +13,7 @@ export default function ProfilePanel({ onClose }: Props) {
   const [name, setName] = useState(user?.display_name || "");
   const [about, setAbout] = useState(user?.about || "");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const avatarRef = useRef<HTMLInputElement>(null);
 
   const handleSave = async () => {
@@ -29,6 +30,26 @@ export default function ProfilePanel({ onClose }: Props) {
       console.error(e);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    const confirmed = window.confirm(
+      "Delete your account permanently? Your phone number will be freed and you will be logged out."
+    );
+    if (!confirmed) return;
+    const typed = window.prompt('Type DELETE to confirm account deletion:');
+    if (typed !== "DELETE") return;
+    setDeleting(true);
+    try {
+      await authApi.deleteAccount();
+      logout();
+      onClose();
+    } catch (e) {
+      console.error(e);
+      alert("Failed to delete account. Please try again.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -70,16 +91,26 @@ export default function ProfilePanel({ onClose }: Props) {
             <label>About</label>
             <textarea value={about} onChange={(e) => setAbout(e.target.value)} placeholder="About you" />
           </div>
-          <button className="btn-primary" onClick={handleSave} disabled={saving} style={{ marginBottom: 16 }}>
+          <button className="btn-primary" onClick={handleSave} disabled={saving || deleting} style={{ marginBottom: 16 }}>
             {saving ? "Saving..." : "Save Profile"}
           </button>
           <button
             className="btn-primary"
             onClick={() => { logout(); onClose(); }}
-            style={{ background: "#ea0038" }}
+            disabled={deleting}
+            style={{ background: "#ea0038", marginBottom: 16 }}
           >
             <LogOut size={18} style={{ display: "inline", marginRight: 8, verticalAlign: "middle" }} />
             Logout
+          </button>
+          <button
+            className="btn-primary"
+            onClick={handleDeleteAccount}
+            disabled={deleting}
+            style={{ background: "#7f1d1d" }}
+          >
+            <Trash2 size={18} style={{ display: "inline", marginRight: 8, verticalAlign: "middle" }} />
+            {deleting ? "Deleting..." : "Delete Account"}
           </button>
         </div>
       </div>

@@ -9,6 +9,7 @@ from apps.chat.models import (
     ConversationArchive,
     ConversationBlock,
     ConversationFavourite,
+    ConversationPin,
     Message,
     MessageHidden,
     MessageReaction,
@@ -51,6 +52,10 @@ class ConversationRepository:
             conversation_id=OuterRef("pk"),
             user=user,
         )
+        pinned_exists = ConversationPin.objects.filter(
+            conversation_id=OuterRef("pk"),
+            user=user,
+        )
 
         qs = (
             Conversation.objects.filter(participants=user)
@@ -84,6 +89,7 @@ class ConversationRepository:
                 is_favourite=Exists(favourite_exists),
                 is_archived=Exists(archived_exists),
                 is_blocked=Exists(blocked_exists),
+                is_pinned=Exists(pinned_exists),
             )
         )
 
@@ -102,6 +108,7 @@ class ConversationRepository:
                 qs = qs.filter(is_favourite=True)
 
         return qs.order_by(
+            Case(When(is_pinned=True, then=Value(0)), default=Value(1), output_field=IntegerField()),
             Case(When(is_favourite=True, then=Value(0)), default=Value(1), output_field=IntegerField()),
             "-updated_at",
         )
@@ -132,6 +139,14 @@ class ConversationRepository:
             ConversationBlock.objects.get_or_create(conversation=conversation, user=user)
             return True
         ConversationBlock.objects.filter(conversation=conversation, user=user).delete()
+        return False
+
+    @staticmethod
+    def set_pinned(conversation: Conversation, user: User, pinned: bool) -> bool:
+        if pinned:
+            ConversationPin.objects.get_or_create(conversation=conversation, user=user)
+            return True
+        ConversationPin.objects.filter(conversation=conversation, user=user).delete()
         return False
 
     @staticmethod

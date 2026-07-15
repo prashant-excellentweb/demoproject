@@ -16,8 +16,11 @@ Tabs: **All** · **Unread** · **Favourites** · **Groups** · **Archived** · *
 | Toggle favourite | `POST /chat/conversations/{id}/favourite/` |
 | Archive / unarchive | `POST /chat/conversations/{id}/archive/` body `{ "action": "archive" \| "unarchive" }` |
 | Block / unblock | `POST /chat/conversations/{id}/block/` body `{ "action": "block" \| "unblock" }` |
+| Pin / unpin | `POST /chat/conversations/{id}/pin/` body `{ "action": "pin" \| "unpin" }` |
+| Report user | `POST /auth/users/{id}/report/` body `{ "reason", "details?", "conversation_id?" }` |
+| Delete account | `DELETE /auth/profile/` |
 
-Conversation payload includes `is_favourite`, `is_archived`, `is_blocked`. Archived chats are hidden from the main inbox filters.
+Conversation payload includes `is_favourite`, `is_archived`, `is_blocked`, `is_pinned`. Archived chats are hidden from the main inbox filters. Pinned chats sort above favourites.
 
 ## Message delete (web + Flutter)
 

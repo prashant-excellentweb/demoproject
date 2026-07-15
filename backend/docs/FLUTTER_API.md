@@ -121,8 +121,10 @@ POST /auth/logout/
 |--------|----------|-------------|
 | GET | `/auth/profile/` | Get current user profile |
 | PATCH | `/auth/profile/` | Update name, about, avatar (multipart) |
+| DELETE | `/auth/profile/` | Soft-delete account (frees phone number) |
 | GET | `/auth/search/?q=john` | Search users (min 2 chars) |
 | GET | `/auth/users/{id}/` | Get user by ID |
+| POST | `/auth/users/{id}/report/` | Report user `{ "reason", "details?", "conversation_id?" }` |
 
 ---
 
@@ -135,6 +137,7 @@ POST /auth/logout/
 | POST | `/chat/conversations/{id}/favourite/` | Toggle favourite (per user) |
 | POST | `/chat/conversations/{id}/archive/` | Archive/unarchive `{ "action": "archive" \| "unarchive" }` |
 | POST | `/chat/conversations/{id}/block/` | Block/unblock `{ "action": "block" \| "unblock" }` |
+| POST | `/chat/conversations/{id}/pin/` | Pin/unpin `{ "action": "pin" \| "unpin" }` |
 | POST | `/chat/conversations/direct/` | Start 1:1 chat `{ "user_id": 2 }` |
 | POST | `/chat/conversations/group/` | Create group `{ "group_name": "Family", "participant_ids": [2,3] }` |
 | PATCH | `/chat/conversations/{id}/group/` | Update group name/avatar (admin only, multipart) |
@@ -158,14 +161,14 @@ GET /chat/conversations/?filter=blocked
 
 | `filter` | Meaning |
 |----------|---------|
-| `all` | Main inbox (excludes archived; favourites sorted to top) |
+| `all` | Main inbox (excludes archived; pinned then favourites sorted to top) |
 | `unread` | Unread chats in inbox |
 | `groups` | Group chats in inbox |
 | `favourites` | Favourite chats in inbox |
 | `archived` | Archived chats only |
 | `blocked` | Chats you blocked |
 
-Each conversation includes `is_favourite`, `is_archived`, `is_blocked`.
+Each conversation includes `is_favourite`, `is_archived`, `is_blocked`, `is_pinned`.
 
 ```http
 POST /chat/conversations/1/favourite/
@@ -191,14 +194,51 @@ POST /chat/conversations/1/block/
 { "action": "unblock" }
 ```
 
+```http
+POST /chat/conversations/1/pin/
+{ "action": "pin" }
+```
+
+```http
+POST /chat/conversations/1/pin/
+{ "action": "unpin" }
+```
+
 **Notes**
 - Archive is per-user. New messages unarchive the chat for participants again.
 - Block is per-user. Blocked users cannot **send** in that chat until they unblock.
+- Pin is per-user. Pinned chats sort above favourites in the inbox.
 - Sending to a blocked chat returns `403` with message to unblock first.
+
+### Report user
+
+```http
+POST /auth/users/2/report/
+```
+```json
+{
+  "reason": "spam",
+  "details": "Sending ads",
+  "conversation_id": 1
+}
+```
+
+`reason`: `spam` | `harassment` | `inappropriate` | `fake` | `other`
+
+### Delete account
+
+```http
+DELETE /auth/profile/
+```
+
+Soft-deletes the account (`is_active=false`), renames the phone so it can be reused, and clears the avatar.
 
 ```dart
 await dio.post('/chat/conversations/$convId/archive/', data: {'action': 'archive'});
 await dio.post('/chat/conversations/$convId/block/', data: {'action': 'block'});
+await dio.post('/chat/conversations/$convId/pin/', data: {'action': 'pin'});
+await dio.post('/auth/users/$userId/report/', data: {'reason': 'spam'});
+await dio.delete('/auth/profile/');
 ```
 
 ### Send text message

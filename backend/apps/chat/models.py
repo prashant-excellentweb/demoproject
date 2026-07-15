@@ -219,3 +219,28 @@ class ConversationBlock(models.Model):
 
     def __str__(self):
         return f"user {self.user_id} blocked conversation {self.conversation_id}"
+
+
+class ConversationPin(models.Model):
+    """Per-user pinned chat — stays at top of the inbox."""
+
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name="pinned_by",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="pinned_conversations",
+    )
+    pinned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("conversation", "user")
+        indexes = [
+            models.Index(fields=["user", "-pinned_at"]),
+        ]
+
+    def __str__(self):
+        return f"user {self.user_id} pinned conversation {self.conversation_id}"

@@ -99,9 +99,11 @@ class ReactToMessageSerializer(serializers.Serializer):
 
 
 class ConversationActionSerializer(serializers.Serializer):
-    """Shared body for archive/block endpoints."""
+    """Shared body for archive/block/pin endpoints."""
 
-    action = serializers.ChoiceField(choices=("archive", "unarchive", "block", "unblock"))
+    action = serializers.ChoiceField(
+        choices=("archive", "unarchive", "block", "unblock", "pin", "unpin")
+    )
 
 
 class DeleteMessageSerializer(serializers.Serializer):
@@ -121,6 +123,7 @@ class ConversationSerializer(serializers.ModelSerializer):
     is_favourite = serializers.SerializerMethodField()
     is_archived = serializers.SerializerMethodField()
     is_blocked = serializers.SerializerMethodField()
+    is_pinned = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
@@ -136,6 +139,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             "is_favourite",
             "is_archived",
             "is_blocked",
+            "is_pinned",
             "last_message",
             "unread_count",
             "created_at",
@@ -171,6 +175,14 @@ class ConversationSerializer(serializers.ModelSerializer):
         if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
             return False
         return obj.blocked_by.filter(user=request.user).exists()
+
+    def get_is_pinned(self, obj):
+        if hasattr(obj, "is_pinned"):
+            return bool(obj.is_pinned)
+        request = self.context.get("request")
+        if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+            return False
+        return obj.pinned_by.filter(user=request.user).exists()
 
     def get_last_message(self, obj):
         latest = getattr(obj, "latest_messages", None)

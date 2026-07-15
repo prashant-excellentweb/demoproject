@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -9,14 +10,16 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView as BaseTokenRefreshView
 
 from apps.common.responses import api_error, api_success
-from apps.users.models import OTPVerification, User
+from apps.users.models import OTPVerification, User, UserReport
 from apps.users.serializers import (
     ProfileUpdateSerializer,
+    ReportUserSerializer,
     SendOTPSerializer,
     UserPublicSerializer,
     UserSerializer,
     VerifyOTPSerializer,
 )
+from apps.users.services.account_service import AccountService
 from apps.users.services.sms_service import SMSService
 
 
@@ -65,7 +68,7 @@ class VerifyOTPView(APIView):
             return api_error(message="Invalid or expired OTP.", status_code=status.HTTP_400_BAD_REQUEST)
 
         try:
-            user = User.objects.get(phone_number=phone)
+            user = User.objects.get(phone_number=phone, is_active=True)
             created = False
         except User.DoesNotExist:
             user = User.objects.create_user(phone_number=phone)
@@ -122,6 +125,11 @@ class ProfileView(APIView):
             message="Profile updated successfully.",
         )
 
+    @extend_schema(tags=["Auth"], summary="Delete account (soft-delete)")
+    def delete(self, request):
+        AccountService.delete_account(request.user)
+        return api_success(message="Account deleted successfully.", data=None)
+
 
 class UserSearchView(APIView):
     @extend_schema(
@@ -134,10 +142,10 @@ class UserSearchView(APIView):
         if len(query) < 2:
             return api_success(data=[], message="Search query too short.")
         users = (
-            User.objects.filter(display_name__icontains=query)
-            | User.objects.filter(phone_number__icontains=query)
+            User.objects.filter(is_active=True)
+            .filter(Q(display_name__icontains=query) | Q(phone_number__icontains=query))
+            .exclude(id=request.user.id)[:20]
         )
-        users = users.exclude(id=request.user.id)[:20]
         return api_success(
             data=UserPublicSerializer(users, many=True, context={"request": request}).data,
             message="Users fetched successfully.",
@@ -148,12 +156,54 @@ class UserDetailView(APIView):
     @extend_schema(tags=["Auth"], summary="Get user by ID")
     def get(self, request, user_id):
         try:
-            user = User.objects.get(id=user_id)
+            user = User.objects.get(id=user_id, is_active=True)
         except User.DoesNotExist:
             return api_error(message="User not found.", status_code=status.HTTP_404_NOT_FOUND)
         return api_success(
             data=UserPublicSerializer(user, context={"request": request}).data,
             message="User fetched successfully.",
+        )
+
+
+class ReportUserView(APIView):
+    @extend_schema(tags=["Auth"], summary="Report a user", request=ReportUserSerializer)
+    def post(self, request, user_id):
+        if user_id == request.user.id:
+            return api_error(
+                message="You cannot report yourself.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            reported = User.objects.get(id=user_id, is_active=True)
+        except User.DoesNotExist:
+            return api_error(message="User not found.", status_code=status.HTTP_404_NOT_FOUND)
+
+        serializer = ReportUserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        conversation = None
+        conversation_id = serializer.validated_data.get("conversation_id")
+        if conversation_id:
+            from apps.chat.models import Conversation
+            from apps.chat.repositories.conversation_repository import ConversationRepository
+
+            try:
+                conversation = Conversation.objects.get(id=conversation_id)
+            except Conversation.DoesNotExist:
+                return api_error(message="Conversation not found.", status_code=status.HTTP_404_NOT_FOUND)
+            if not ConversationRepository.user_in_conversation(conversation, request.user):
+                return api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
+
+        report = UserReport.objects.create(
+            reporter=request.user,
+            reported_user=reported,
+            conversation=conversation,
+            reason=serializer.validated_data["reason"],
+            details=serializer.validated_data.get("details", ""),
+        )
+        return api_success(
+            data={"id": report.id, "reason": report.reason},
+            message="Report submitted. Thank you.",
+            status_code=status.HTTP_201_CREATED,
         )
 
 

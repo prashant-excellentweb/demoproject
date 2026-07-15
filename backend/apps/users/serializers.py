@@ -96,6 +96,12 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
         return user
 
 
+class ReportUserSerializer(serializers.Serializer):
+    reason = serializers.ChoiceField(choices=["spam", "harassment", "inappropriate", "fake", "other"])
+    details = serializers.CharField(required=False, allow_blank=True, max_length=1000, default="")
+    conversation_id = serializers.IntegerField(required=False, allow_null=True)
+
+
 class SendOTPResponseSerializer(serializers.Serializer):
     detail = serializers.CharField()
     phone_number = serializers.CharField()

@@ -3,6 +3,7 @@ from django.urls import path
 from apps.users.views import (
     LogoutView,
     ProfileView,
+    ReportUserView,
     SendOTPView,
     TokenRefreshView,
     UserDetailView,
@@ -17,5 +18,6 @@ urlpatterns = [
     path("profile/", ProfileView.as_view(), name="profile"),
     path("search/", UserSearchView.as_view(), name="user-search"),
     path("users/<int:user_id>/", UserDetailView.as_view(), name="user-detail"),
+    path("users/<int:user_id>/report/", ReportUserView.as_view(), name="report-user"),
     path("logout/", LogoutView.as_view(), name="logout"),
 ]

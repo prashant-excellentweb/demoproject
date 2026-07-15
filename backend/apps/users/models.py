@@ -70,6 +70,45 @@ class User(AbstractUser):
         return self.display_name or self.phone_number
 
 
+class UserReport(models.Model):
+    class Reason(models.TextChoices):
+        SPAM = "spam", "Spam"
+        HARASSMENT = "harassment", "Harassment"
+        INAPPROPRIATE = "inappropriate", "Inappropriate content"
+        FAKE = "fake", "Fake account"
+        OTHER = "other", "Other"
+
+    reporter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="reports_filed",
+    )
+    reported_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="reports_received",
+    )
+    conversation = models.ForeignKey(
+        "chat.Conversation",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="user_reports",
+    )
+    reason = models.CharField(max_length=32, choices=Reason.choices, default=Reason.OTHER)
+    details = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["reported_user", "-created_at"]),
+            models.Index(fields=["reporter", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.reporter_id} reported {self.reported_user_id} ({self.reason})"
+
+
 class OTPVerification(models.Model):
     phone_number = models.CharField(max_length=20, db_index=True)
     otp_code = models.CharField(max_length=6)

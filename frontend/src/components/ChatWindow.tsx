@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MoreVertical, Paperclip, Phone, Search, Send, Video } from "lucide-react";
-import { chatApi } from "@/api/client";
+import { Flag, MoreVertical, Paperclip, Phone, Search, Send, Video } from "lucide-react";
+import { authApi, chatApi } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/context/WebSocketContext";
 import type { Conversation, Message } from "@/types";
@@ -18,6 +18,14 @@ interface Props {
   onConversationUpdate: (conversation: Conversation) => void;
 }
 
+const REPORT_REASONS = [
+  { value: "spam", label: "Spam" },
+  { value: "harassment", label: "Harassment" },
+  { value: "inappropriate", label: "Inappropriate content" },
+  { value: "fake", label: "Fake account" },
+  { value: "other", label: "Other" },
+] as const;
+
 export default function ChatWindow({ conversation, onRefreshList, onConversationUpdate }: Props) {
   const { user } = useAuth();
   const { joinConversation, leaveConversation, sendTyping, markRead, onMessage, onTyping, onMessageDeleted, onMessageUpdated } = useWebSocket();
@@ -27,9 +35,12 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   const [sending, setSending] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const headerMenuRef = useRef<HTMLDivElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout>>();
 
   const appendMessage = useCallback((msg: Message) => {
@@ -64,6 +75,10 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     return isGroupAdmin(conversation, user!.id);
   }, [user, conversation]);
 
+  const other = conversation.is_group
+    ? null
+    : getOtherParticipant(conversation, user!.id);
+
   const handleUnblock = useCallback(async () => {
     try {
       const res = await chatApi.blockConversation(conversation.id, "unblock");
@@ -74,11 +89,36 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     }
   }, [conversation.id, onConversationUpdate, onRefreshList]);
 
-  const isBlocked = conversation.is_blocked === true;
+  const handleReportUser = useCallback(async () => {
+    if (!other || reporting) return;
+    setHeaderMenuOpen(false);
+    const reasonLabels = REPORT_REASONS.map((r, i) => `${i + 1}. ${r.label}`).join("\n");
+    const choice = window.prompt(`Report ${getDisplayName(other)}?\n\nEnter reason number:\n${reasonLabels}`, "1");
+    if (!choice) return;
+    const idx = Number(choice) - 1;
+    const reason = REPORT_REASONS[idx]?.value;
+    if (!reason) {
+      alert("Invalid reason.");
+      return;
+    }
+    const details = window.prompt("Optional details (leave blank to skip):") || "";
+    setReporting(true);
+    try {
+      await authApi.reportUser(other.id, {
+        reason,
+        details,
+        conversation_id: conversation.id,
+      });
+      alert("Report submitted. Thank you.");
+    } catch (e) {
+      console.error(e);
+      alert("Failed to submit report.");
+    } finally {
+      setReporting(false);
+    }
+  }, [other, reporting, conversation.id]);
 
-  const other = conversation.is_group
-    ? null
-    : getOtherParticipant(conversation, user!.id);
+  const isBlocked = conversation.is_blocked === true;
 
   const chatName = conversation.is_group
     ? conversation.group_name
@@ -98,6 +138,17 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     joinConversation(conversation.id);
     return () => leaveConversation();
   }, [conversation.id, joinConversation, leaveConversation, loadMessages]);
+
+  useEffect(() => {
+    if (!headerMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target as Node)) {
+        setHeaderMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [headerMenuOpen]);
 
   useEffect(() => {
     const unsubMsg = onMessage((msg) => {
@@ -227,13 +278,29 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
         <button type="button" className="icon-btn"><Search size={20} /></button>
         <button type="button" className="icon-btn"><Phone size={20} /></button>
         <button type="button" className="icon-btn"><Video size={20} /></button>
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={() => conversation.is_group && setShowGroupInfo(true)}
-        >
-          <MoreVertical size={20} />
-        </button>
+        <div className="chat-header-menu-wrap" ref={headerMenuRef}>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => {
+              if (conversation.is_group) {
+                setShowGroupInfo(true);
+              } else {
+                setHeaderMenuOpen((o) => !o);
+              }
+            }}
+          >
+            <MoreVertical size={20} />
+          </button>
+          {headerMenuOpen && other && (
+            <div className="chat-header-menu">
+              <button type="button" onClick={handleReportUser} disabled={reporting}>
+                <Flag size={16} />
+                Report user
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {showGroupInfo && conversation.is_group && (

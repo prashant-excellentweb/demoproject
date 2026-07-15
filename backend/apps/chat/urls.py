@@ -9,6 +9,7 @@ from apps.chat.views import (
     DeleteMessageView,
     MarkReadView,
     MessageListView,
+    PinConversationView,
     ReactToMessageView,
     RemoveGroupMemberView,
     SendMessageView,
@@ -34,6 +35,11 @@ urlpatterns = [
         "conversations/<int:conversation_id>/block/",
         BlockConversationView.as_view(),
         name="block-conversation",
+    ),
+    path(
+        "conversations/<int:conversation_id>/pin/",
+        PinConversationView.as_view(),
+        name="pin-conversation",
     ),
     path("conversations/<int:conversation_id>/group/", UpdateGroupView.as_view(), name="update-group"),
     path(

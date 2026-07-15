@@ -154,6 +154,35 @@ class BlockConversationView(APIView):
         )
 
 
+class PinConversationView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="Pin or unpin chat",
+        request=ConversationActionSerializer,
+    )
+    def post(self, request, conversation_id):
+        try:
+            conv = Conversation.objects.get(id=conversation_id)
+        except Conversation.DoesNotExist:
+            return api_error(message="Conversation not found.", status_code=status.HTTP_404_NOT_FOUND)
+        if not ConversationRepository.user_in_conversation(conv, request.user):
+            return api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
+
+        action = request.data.get("action", "pin")
+        if action not in ("pin", "unpin"):
+            return api_error(
+                message="action must be 'pin' or 'unpin'.",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        is_pinned = ConversationRepository.set_pinned(conv, request.user, pinned=(action == "pin"))
+        data = _serialize_user_conversation(request, conversation_id)
+        data["is_pinned"] = is_pinned
+        return api_success(
+            data=data,
+            message="Chat pinned." if is_pinned else "Chat unpinned.",
+        )
+
+
 class CreateDirectChatView(APIView):
     @extend_schema(tags=["Chat"], summary="Start direct chat", request=CreateDirectChatSerializer)
     def post(self, request):

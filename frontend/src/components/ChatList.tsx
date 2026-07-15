@@ -5,6 +5,8 @@ import {
   Ban,
   MessageCircle,
   MoreVertical,
+  Pin,
+  PinOff,
   Search,
   ShieldOff,
   Star,
@@ -165,6 +167,23 @@ export default function ChatList({
     }
   };
 
+  const handlePin = async (e: React.MouseEvent, conv: Conversation) => {
+    e.stopPropagation();
+    if (busyId) return;
+    setBusyId(conv.id);
+    setMenuOpenId(null);
+    try {
+      const action = conv.is_pinned ? "unpin" : "pin";
+      const res = await chatApi.pinConversation(conv.id, action);
+      applyConversationUpdate(res.data);
+      loadConversations(filter);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const filtered = conversations.filter((c) => {
     if (!search) return true;
     const q = search.toLowerCase();
@@ -278,6 +297,7 @@ export default function ChatList({
               <div className="chat-info">
                 <div className="chat-info-top">
                   <span className="chat-name">
+                    {c.is_pinned && <Pin size={12} className="pinned-inline-icon" fill="currentColor" />}
                     {c.is_favourite && <Star size={12} className="favourite-inline-star" fill="currentColor" />}
                     {c.is_blocked && <Ban size={12} className="blocked-inline-icon" />}
                     {getChatName(c)}
@@ -320,6 +340,10 @@ export default function ChatList({
 
               {menuOpenId === c.id && (
                 <div className="chat-item-menu" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+                  <button type="button" onClick={(e) => handlePin(e, c)} disabled={busyId === c.id}>
+                    {c.is_pinned ? <PinOff size={16} /> : <Pin size={16} />}
+                    {c.is_pinned ? "Unpin" : "Pin"}
+                  </button>
                   <button type="button" onClick={(e) => handleArchive(e, c)} disabled={busyId === c.id}>
                     {c.is_archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
                     {c.is_archived ? "Unarchive" : "Archive"}
