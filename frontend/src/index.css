@@ -1335,6 +1335,44 @@ a {
   color: #ea0038;
 }
 
+.group-member-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.group-info-actions {
+  border-top: 1px solid var(--wa-border);
+  margin-top: 16px;
+  padding-top: 12px;
+}
+
+.group-info-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.group-info-action:hover {
+  background: var(--wa-hover);
+}
+
+.group-info-action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.group-info-action.danger {
+  color: #ea0038;
+}
+
 .create-status-form {
   display: flex;
   flex-direction: column;

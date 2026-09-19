@@ -1,11 +1,12 @@
 import { useRef, useState } from "react";
-import { Camera, UserMinus, X } from "lucide-react";
+import { Ban, Camera, Flag, ShieldOff, UserMinus, X } from "lucide-react";
 import { chatApi } from "@/api/client";
 import type { Conversation } from "@/types";
 import Avatar from "./Avatar";
 import GroupAvatar from "./GroupAvatar";
 import { getDisplayName } from "@/utils/format";
 import { isGroupAdmin } from "@/utils/group";
+import { reportUser } from "@/utils/report";
 
 interface Props {
   conversation: Conversation;
@@ -28,8 +29,11 @@ export default function GroupInfoPanel({
   const [avatarUrl, setAvatarUrl] = useState(conversation.group_avatar_url);
   const [saving, setSaving] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const [reportingId, setReportingId] = useState<number | null>(null);
+  const [blocking, setBlocking] = useState(false);
   const [error, setError] = useState("");
   const avatarRef = useRef<HTMLInputElement>(null);
+  const isBlocked = conversation.is_blocked === true;
 
   const saveGroup = async (overrides?: { name?: string; avatar?: File }) => {
     const name = (overrides?.name ?? groupName).trim();
@@ -80,6 +84,38 @@ export default function GroupInfoPanel({
       setError(err instanceof Error ? err.message : "Failed to remove member.");
     } finally {
       setRemovingId(null);
+    }
+  };
+
+  const handleReportMember = async (member: Conversation["participants"][number]) => {
+    setReportingId(member.id);
+    setError("");
+    try {
+      await reportUser(member, conversation.id);
+    } finally {
+      setReportingId(null);
+    }
+  };
+
+  const handleToggleBlock = async () => {
+    const action = isBlocked ? "unblock" : "block";
+    if (
+      action === "block" &&
+      !window.confirm("Block this group? You won't be able to send messages until you unblock.")
+    ) {
+      return;
+    }
+
+    setBlocking(true);
+    setError("");
+    try {
+      const res = await chatApi.blockConversation(conversation.id, action);
+      onUpdated(res.data);
+      onRefreshList();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : `Failed to ${action} group.`);
+    } finally {
+      setBlocking(false);
     }
   };
 
@@ -167,20 +203,45 @@ export default function GroupInfoPanel({
                     {member.is_online ? "online" : member.phone_number}
                   </div>
                 </div>
-                {isAdmin && !isSelf && (
-                  <button
-                    type="button"
-                    className="icon-btn danger-btn"
-                    title="Remove member"
-                    disabled={removingId === member.id}
-                    onClick={() => handleRemoveMember(member.id)}
-                  >
-                    <UserMinus size={18} />
-                  </button>
+                {!isSelf && (
+                  <div className="group-member-actions">
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      title={`Report ${getDisplayName(member)}`}
+                      disabled={reportingId === member.id}
+                      onClick={() => handleReportMember(member)}
+                    >
+                      <Flag size={18} />
+                    </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        className="icon-btn danger-btn"
+                        title="Remove member"
+                        disabled={removingId === member.id}
+                        onClick={() => handleRemoveMember(member.id)}
+                      >
+                        <UserMinus size={18} />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             );
           })}
+        </div>
+
+        <div className="group-info-actions">
+          <button
+            type="button"
+            className="group-info-action danger"
+            disabled={blocking}
+            onClick={handleToggleBlock}
+          >
+            {isBlocked ? <ShieldOff size={18} /> : <Ban size={18} />}
+            {isBlocked ? "Unblock group" : "Block group"}
+          </button>
         </div>
       </div>
     </div>

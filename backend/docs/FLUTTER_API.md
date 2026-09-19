@@ -484,8 +484,9 @@ POST /chat/conversations/1/pin/
 - Block is per-user. Blocked users cannot **send** in that chat until they unblock.
 - Pin is per-user. Pinned chats sort above favourites in the inbox.
 - Sending to a blocked chat returns `403` with message to unblock first.
+- Block works for **group** chats too — it blocks the chat for you only, not the group for everyone.
 
-### Report user
+### Report user or chat
 
 ```http
 POST /auth/users/2/report/
@@ -499,6 +500,8 @@ POST /auth/users/2/report/
 ```
 
 `reason`: `spam` | `harassment` | `inappropriate` | `fake` | `other`
+
+`conversation_id` is optional and turns a user report into a **chat report** by linking the offending conversation. It accepts 1:1 **and group** conversation IDs, so you can report a group member from the group info screen. You must be a participant of that conversation or the API returns `403`.
 
 ### Delete account
 

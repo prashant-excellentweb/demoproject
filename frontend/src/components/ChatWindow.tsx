@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Flag, MoreVertical, Paperclip, Phone, Search, Send, Video } from "lucide-react";
-import { authApi, chatApi } from "@/api/client";
+import { chatApi } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/context/WebSocketContext";
 import type { Conversation, Message } from "@/types";
@@ -11,20 +11,13 @@ import GroupInfoPanel from "./GroupInfoPanel";
 import MessageBubble from "./MessageBubble";
 import { formatLastSeen, getDisplayName, getOtherParticipant } from "@/utils/format";
 import { isGroupAdmin } from "@/utils/group";
+import { reportUser } from "@/utils/report";
 
 interface Props {
   conversation: Conversation;
   onRefreshList: () => void;
   onConversationUpdate: (conversation: Conversation) => void;
 }
-
-const REPORT_REASONS = [
-  { value: "spam", label: "Spam" },
-  { value: "harassment", label: "Harassment" },
-  { value: "inappropriate", label: "Inappropriate content" },
-  { value: "fake", label: "Fake account" },
-  { value: "other", label: "Other" },
-] as const;
 
 export default function ChatWindow({ conversation, onRefreshList, onConversationUpdate }: Props) {
   const { user } = useAuth();
@@ -92,27 +85,9 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   const handleReportUser = useCallback(async () => {
     if (!other || reporting) return;
     setHeaderMenuOpen(false);
-    const reasonLabels = REPORT_REASONS.map((r, i) => `${i + 1}. ${r.label}`).join("\n");
-    const choice = window.prompt(`Report ${getDisplayName(other)}?\n\nEnter reason number:\n${reasonLabels}`, "1");
-    if (!choice) return;
-    const idx = Number(choice) - 1;
-    const reason = REPORT_REASONS[idx]?.value;
-    if (!reason) {
-      alert("Invalid reason.");
-      return;
-    }
-    const details = window.prompt("Optional details (leave blank to skip):") || "";
     setReporting(true);
     try {
-      await authApi.reportUser(other.id, {
-        reason,
-        details,
-        conversation_id: conversation.id,
-      });
-      alert("Report submitted. Thank you.");
-    } catch (e) {
-      console.error(e);
-      alert("Failed to submit report.");
+      await reportUser(other, conversation.id);
     } finally {
       setReporting(false);
     }
