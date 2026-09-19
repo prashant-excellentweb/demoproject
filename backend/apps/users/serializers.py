@@ -2,10 +2,15 @@ import re
 
 from rest_framework import serializers
 
-from apps.users.models import User, normalize_phone
+from apps.users.models import PrivacyVisibility, User, normalize_phone
+from apps.users.services.privacy_service import PrivacyService
+
+PRIVACY_CHOICES = [c.value for c in PrivacyVisibility]
 
 
 class UserSerializer(serializers.ModelSerializer):
+    """Full profile for the authenticated owner (includes privacy prefs)."""
+
     avatar_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -21,8 +26,19 @@ class UserSerializer(serializers.ModelSerializer):
             "last_seen",
             "profile_setup_complete",
             "date_joined",
+            "profile_photo_privacy",
+            "about_privacy",
+            "last_seen_privacy",
+            "status_privacy",
         )
-        read_only_fields = ("id", "phone_number", "is_online", "last_seen", "profile_setup_complete", "date_joined")
+        read_only_fields = (
+            "id",
+            "phone_number",
+            "is_online",
+            "last_seen",
+            "profile_setup_complete",
+            "date_joined",
+        )
 
     def get_avatar_url(self, obj):
         if obj.avatar:
@@ -34,6 +50,8 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserPublicSerializer(serializers.ModelSerializer):
+    """Public user payload with privacy redaction for the requesting viewer."""
+
     avatar_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -55,6 +73,16 @@ class UserPublicSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.avatar.url)
             return obj.avatar.url
         return None
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        viewer = getattr(request, "user", None) if request else None
+        if viewer is not None and not getattr(viewer, "is_authenticated", False):
+            viewer = None
+        return PrivacyService.apply_to_public_dict(
+            data, owner=instance, viewer=viewer, context=self.context
+        )
 
 
 class SendOTPSerializer(serializers.Serializer):
@@ -76,9 +104,22 @@ class VerifyOTPSerializer(serializers.Serializer):
 
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
+    profile_photo_privacy = serializers.ChoiceField(choices=PRIVACY_CHOICES, required=False)
+    about_privacy = serializers.ChoiceField(choices=PRIVACY_CHOICES, required=False)
+    last_seen_privacy = serializers.ChoiceField(choices=PRIVACY_CHOICES, required=False)
+    status_privacy = serializers.ChoiceField(choices=PRIVACY_CHOICES, required=False)
+
     class Meta:
         model = User
-        fields = ("display_name", "about", "avatar")
+        fields = (
+            "display_name",
+            "about",
+            "avatar",
+            "profile_photo_privacy",
+            "about_privacy",
+            "last_seen_privacy",
+            "status_privacy",
+        )
 
     def validate_display_name(self, value):
         value = (value or "").strip()

@@ -1,3 +1,13 @@
+/** WhatsApp-style audience for profile fields and status. */
+export type PrivacyVisibility = "everyone" | "contacts" | "nobody";
+
+export interface PrivacySettings {
+  profile_photo_privacy: PrivacyVisibility;
+  about_privacy: PrivacyVisibility;
+  last_seen_privacy: PrivacyVisibility;
+  status_privacy: PrivacyVisibility;
+}
+
 export interface User {
   id: number;
   phone_number: string;
@@ -9,6 +19,14 @@ export interface User {
   last_seen: string | null;
   profile_setup_complete?: boolean;
   date_joined?: string;
+  /** Who can see profile photo: everyone | contacts | nobody */
+  profile_photo_privacy?: PrivacyVisibility;
+  /** Who can see about text */
+  about_privacy?: PrivacyVisibility;
+  /** Who can see online / last seen */
+  last_seen_privacy?: PrivacyVisibility;
+  /** Who can see status / stories */
+  status_privacy?: PrivacyVisibility;
 }
 
 export interface MessageReactionSummary {

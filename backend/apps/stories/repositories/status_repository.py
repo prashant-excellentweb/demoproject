@@ -1,8 +1,8 @@
-from django.db.models import Prefetch, Q
+from django.db.models import Prefetch
 from django.utils import timezone
 
 from apps.stories.models import Status, StatusView
-from apps.users.models import User
+from apps.users.models import PrivacyVisibility, User
 
 
 class StatusRepository:
@@ -13,10 +13,17 @@ class StatusRepository:
 
     @staticmethod
     def get_contacts_statuses(user: User):
-        """Statuses from users the current user has conversations with."""
+        """
+        Statuses from conversation contacts, respecting each author's status_privacy.
+
+        - everyone: visible to contacts (and anyone who reaches this feed)
+        - contacts: visible only to conversation contacts (this feed)
+        - nobody: hidden from everyone except the author (excluded here)
+        """
         contact_ids = (
             User.objects.filter(conversations__participants=user)
             .exclude(id=user.id)
+            .exclude(status_privacy=PrivacyVisibility.NOBODY)
             .values_list("id", flat=True)
             .distinct()
         )

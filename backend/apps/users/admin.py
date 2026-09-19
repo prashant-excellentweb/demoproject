@@ -12,6 +12,17 @@ class UserAdmin(BaseUserAdmin):
     fieldsets = (
         (None, {"fields": ("phone_number", "password")}),
         ("Profile", {"fields": ("display_name", "about", "avatar", "profile_setup_complete")}),
+        (
+            "Privacy",
+            {
+                "fields": (
+                    "profile_photo_privacy",
+                    "about_privacy",
+                    "last_seen_privacy",
+                    "status_privacy",
+                )
+            },
+        ),
         ("Status", {"fields": ("is_online", "last_seen")}),
         ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
     )

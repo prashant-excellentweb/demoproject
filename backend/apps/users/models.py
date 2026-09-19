@@ -37,6 +37,12 @@ class UserManager(BaseUserManager):
         return user
 
 
+class PrivacyVisibility(models.TextChoices):
+    EVERYONE = "everyone", "Everyone"
+    CONTACTS = "contacts", "My contacts"
+    NOBODY = "nobody", "Nobody"
+
+
 class User(AbstractUser):
     phone_number = models.CharField(max_length=20, unique=True, db_index=True)
     display_name = models.CharField(max_length=100, blank=True)
@@ -45,6 +51,28 @@ class User(AbstractUser):
     is_online = models.BooleanField(default=False)
     last_seen = models.DateTimeField(null=True, blank=True)
     profile_setup_complete = models.BooleanField(default=False)
+
+    # WhatsApp-style privacy: who can see each field (owner always sees own data)
+    profile_photo_privacy = models.CharField(
+        max_length=16,
+        choices=PrivacyVisibility.choices,
+        default=PrivacyVisibility.EVERYONE,
+    )
+    about_privacy = models.CharField(
+        max_length=16,
+        choices=PrivacyVisibility.choices,
+        default=PrivacyVisibility.EVERYONE,
+    )
+    last_seen_privacy = models.CharField(
+        max_length=16,
+        choices=PrivacyVisibility.choices,
+        default=PrivacyVisibility.EVERYONE,
+    )
+    status_privacy = models.CharField(
+        max_length=16,
+        choices=PrivacyVisibility.choices,
+        default=PrivacyVisibility.CONTACTS,
+    )
 
     USERNAME_FIELD = "phone_number"
     REQUIRED_FIELDS: list[str] = []

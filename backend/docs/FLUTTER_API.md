@@ -3,6 +3,9 @@
 > **Chat + WebSocket implementation (screens, flows, Dio + `web_socket_channel`):**  
 > see **[`FLUTTER_CHAT.md`](./FLUTTER_CHAT.md)** — conversation APIs, when to use REST vs WebSocket, and copy-paste Flutter patterns.
 
+> **Privacy (Profile photo / About / Last seen / Status):**  
+> see **[`FLUTTER_PRIVACY.md`](./FLUTTER_PRIVACY.md)** — settings API, redaction rules, Flutter models & UI checklist.
+
 ## Standard response (every API)
 
 ```json
@@ -122,12 +125,281 @@ POST /auth/logout/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/auth/profile/` | Get current user profile |
-| PATCH | `/auth/profile/` | Update name, about, avatar (multipart) |
+| GET | `/auth/profile/` | Get current user profile (includes privacy settings) |
+| PATCH | `/auth/profile/` | Update name, about, avatar, **privacy** (multipart or JSON) |
 | DELETE | `/auth/profile/` | Soft-delete account (frees phone number) |
-| GET | `/auth/search/?q=john` | Search users (min 2 chars) |
-| GET | `/auth/users/{id}/` | Get user by ID |
+| GET | `/auth/search/?q=john` | Search users (min 2 chars; fields redacted by privacy) |
+| GET | `/auth/users/{id}/` | Get user by ID (fields redacted by privacy) |
 | POST | `/auth/users/{id}/report/` | Report user `{ "reason", "details?", "conversation_id?" }` |
+
+---
+
+## Privacy settings (Profile photo / About / Last seen / Status)
+
+WhatsApp-style visibility controls. The **owner always sees their own data**. Other users receive redacted fields based on these settings.
+
+### Values (same for all four fields)
+
+| Value | Meaning |
+|-------|---------|
+| `everyone` | Any authenticated ChatApp user |
+| `contacts` | Users who share a conversation with you |
+| `nobody` | Only you |
+
+### Fields on the user profile
+
+| Field | Controls | Default |
+|-------|----------|---------|
+| `profile_photo_privacy` | Who sees `avatar_url` | `everyone` |
+| `about_privacy` | Who sees `about` | `everyone` |
+| `last_seen_privacy` | Who sees `is_online` + `last_seen` | `everyone` |
+| `status_privacy` | Who sees your status/stories in the feed | `contacts` |
+
+### Read own privacy (GET profile)
+
+```http
+GET /auth/profile/
+Authorization: Bearer <access_token>
+```
+
+```json
+{
+  "success": true,
+  "message": "Profile fetched successfully.",
+  "data": {
+    "id": 1,
+    "phone_number": "+1234567890",
+    "display_name": "Alex",
+    "about": "Hey there!",
+    "avatar_url": "http://…/media/avatars/…",
+    "is_online": true,
+    "last_seen": "2026-09-19T10:00:00Z",
+    "profile_setup_complete": true,
+    "profile_photo_privacy": "everyone",
+    "about_privacy": "contacts",
+    "last_seen_privacy": "nobody",
+    "status_privacy": "contacts"
+  }
+}
+```
+
+### Update privacy (PATCH profile)
+
+JSON:
+
+```http
+PATCH /auth/profile/
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "profile_photo_privacy": "contacts",
+  "about_privacy": "everyone",
+  "last_seen_privacy": "nobody",
+  "status_privacy": "contacts"
+}
+```
+
+Or multipart (same as avatar update):
+
+```http
+PATCH /auth/profile/
+Content-Type: multipart/form-data
+
+profile_photo_privacy=contacts
+about_privacy=everyone
+last_seen_privacy=nobody
+status_privacy=contacts
+```
+
+You can combine privacy with name/about/avatar in one request.
+
+### How redaction works for other users
+
+When you call `GET /auth/users/{id}/`, search, conversation participants, or message senders:
+
+| Hidden field | API value when not allowed |
+|--------------|----------------------------|
+| Profile photo | `avatar_url: null` |
+| About | `about: ""` |
+| Last seen / online | `last_seen: null`, `is_online: false` |
+
+**Status:** users with `status_privacy: nobody` never appear in `GET /stories/feed/` for others. Viewing a status ID directly returns `403` if privacy blocks it.
+
+**Contacts** = users who share at least one conversation (1:1 or group).
+
+### Flutter model
+
+```dart
+enum PrivacyVisibility { everyone, contacts, nobody }
+
+PrivacyVisibility privacyFromString(String? v) {
+  switch (v) {
+    case 'contacts':
+      return PrivacyVisibility.contacts;
+    case 'nobody':
+      return PrivacyVisibility.nobody;
+    default:
+      return PrivacyVisibility.everyone;
+  }
+}
+
+String privacyToString(PrivacyVisibility v) => v.name; // everyone|contacts|nobody
+
+class User {
+  final int id;
+  final String phoneNumber;
+  final String displayName;
+  final String about;
+  final String? avatarUrl;
+  final bool isOnline;
+  final DateTime? lastSeen;
+  final PrivacyVisibility? profilePhotoPrivacy; // only on own profile
+  final PrivacyVisibility? aboutPrivacy;
+  final PrivacyVisibility? lastSeenPrivacy;
+  final PrivacyVisibility? statusPrivacy;
+
+  User.fromJson(Map<String, dynamic> j)
+      : id = j['id'],
+        phoneNumber = j['phone_number'] ?? '',
+        displayName = j['display_name'] ?? '',
+        about = j['about'] ?? '',
+        avatarUrl = j['avatar_url'],
+        isOnline = j['is_online'] == true,
+        lastSeen = j['last_seen'] != null ? DateTime.parse(j['last_seen']) : null,
+        profilePhotoPrivacy = j['profile_photo_privacy'] != null
+            ? privacyFromString(j['profile_photo_privacy'])
+            : null,
+        aboutPrivacy = j['about_privacy'] != null
+            ? privacyFromString(j['about_privacy'])
+            : null,
+        lastSeenPrivacy = j['last_seen_privacy'] != null
+            ? privacyFromString(j['last_seen_privacy'])
+            : null,
+        statusPrivacy = j['status_privacy'] != null
+            ? privacyFromString(j['status_privacy'])
+            : null;
+}
+```
+
+### Flutter: update privacy with Dio
+
+```dart
+Future<User> updatePrivacy({
+  required Dio dio,
+  PrivacyVisibility? profilePhoto,
+  PrivacyVisibility? about,
+  PrivacyVisibility? lastSeen,
+  PrivacyVisibility? status,
+}) async {
+  final body = <String, dynamic>{};
+  if (profilePhoto != null) body['profile_photo_privacy'] = privacyToString(profilePhoto);
+  if (about != null) body['about_privacy'] = privacyToString(about);
+  if (lastSeen != null) body['last_seen_privacy'] = privacyToString(lastSeen);
+  if (status != null) body['status_privacy'] = privacyToString(status);
+
+  final res = await dio.patch('/auth/profile/', data: body);
+  final data = res.data['data'] as Map<String, dynamic>;
+  return User.fromJson(data);
+}
+```
+
+### Flutter UI tips
+
+1. **Own profile / settings screen** — show four pickers (Everyone / My contacts / Nobody); save via `PATCH /auth/profile/`.
+2. **Chat header last seen** — if `last_seen == null && !is_online`, hide the subtitle (privacy redacted); do **not** show “offline”.
+3. **Avatar** — if `avatar_url == null`, show initials placeholder (may mean no photo **or** privacy).
+4. **About on contact info** — empty string may mean privacy; don’t treat as an error.
+5. **Status tab** — rely on `/stories/feed/`; users who set Status to Nobody won’t appear. Handle `403` on `/stories/{id}/view/`.
+
+### Example privacy settings screen (Flutter)
+
+```dart
+class PrivacySettingsPage extends StatefulWidget {
+  const PrivacySettingsPage({super.key, required this.user, required this.onSaved});
+  final User user;
+  final ValueChanged<User> onSaved;
+
+  @override
+  State<PrivacySettingsPage> createState() => _PrivacySettingsPageState();
+}
+
+class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
+  late PrivacyVisibility photo;
+  late PrivacyVisibility about;
+  late PrivacyVisibility lastSeen;
+  late PrivacyVisibility status;
+  bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    photo = widget.user.profilePhotoPrivacy ?? PrivacyVisibility.everyone;
+    about = widget.user.aboutPrivacy ?? PrivacyVisibility.everyone;
+    lastSeen = widget.user.lastSeenPrivacy ?? PrivacyVisibility.everyone;
+    status = widget.user.statusPrivacy ?? PrivacyVisibility.contacts;
+  }
+
+  Future<void> _save(Dio dio) async {
+    setState(() => saving = true);
+    try {
+      final updated = await updatePrivacy(
+        dio: dio,
+        profilePhoto: photo,
+        about: about,
+        lastSeen: lastSeen,
+        status: status,
+      );
+      widget.onSaved(updated);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Privacy updated')),
+      );
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Widget _row(String title, PrivacyVisibility value, ValueChanged<PrivacyVisibility> onChanged) {
+    return ListTile(
+      title: Text(title),
+      subtitle: DropdownButton<PrivacyVisibility>(
+        value: value,
+        isExpanded: true,
+        items: PrivacyVisibility.values
+            .map((v) => DropdownMenuItem(value: v, child: Text(v.name)))
+            .toList(),
+        onChanged: (v) { if (v != null) onChanged(v); },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Inject your Dio (with Bearer token) from your app locator / provider.
+    return Scaffold(
+      appBar: AppBar(title: const Text('Privacy')),
+      body: ListView(
+        children: [
+          _row('Profile photo', photo, (v) => setState(() => photo = v)),
+          _row('About', about, (v) => setState(() => about = v)),
+          _row('Last seen', lastSeen, (v) => setState(() => lastSeen = v)),
+          _row('Status', status, (v) => setState(() => status = v)),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: FilledButton(
+              onPressed: saving ? null : () {/* call _save(dio) */},
+              child: Text(saving ? 'Saving…' : 'Save'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+```
+
+> Full chat + WebSocket flows: [`FLUTTER_CHAT.md`](./FLUTTER_CHAT.md)  
+> Dedicated privacy notes for mobile: [`FLUTTER_PRIVACY.md`](./FLUTTER_PRIVACY.md)
 
 ---
 
@@ -375,11 +647,13 @@ POST /chat/conversations/1/members/5/remove/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/stories/feed/` | My + contacts' statuses |
+| GET | `/stories/feed/` | My + contacts' statuses (respects `status_privacy`) |
 | POST | `/stories/create/` | Create status (multipart) |
-| POST | `/stories/{id}/view/` | Mark status viewed |
+| POST | `/stories/{id}/view/` | Mark status viewed (`403` if author's privacy blocks you) |
 | DELETE | `/stories/{id}/delete/` | Delete own status |
 | GET | `/stories/{id}/viewers/` | Who viewed (owner only) |
+
+`status_privacy: nobody` hides the author from other users' feeds. See [Privacy settings](#privacy-settings-profile-photo--about--last-seen--status) and [`FLUTTER_PRIVACY.md`](./FLUTTER_PRIVACY.md).
 
 ### Create text status
 ```

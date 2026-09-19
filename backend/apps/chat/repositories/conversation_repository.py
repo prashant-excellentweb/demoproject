@@ -64,7 +64,17 @@ class ConversationRepository:
                 Prefetch(
                     "participants",
                     queryset=User.objects.only(
-                        "id", "display_name", "phone_number", "avatar", "is_online", "last_seen", "about"
+                        "id",
+                        "display_name",
+                        "phone_number",
+                        "avatar",
+                        "is_online",
+                        "last_seen",
+                        "about",
+                        "profile_photo_privacy",
+                        "about_privacy",
+                        "last_seen_privacy",
+                        "status_privacy",
                     ),
                 ),
                 Prefetch(

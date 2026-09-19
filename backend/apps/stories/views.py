@@ -12,6 +12,7 @@ from apps.stories.models import Status
 from apps.stories.repositories.status_repository import StatusRepository
 from apps.stories.serializers import CreateStatusSerializer, StatusSerializer
 from apps.users.serializers import UserPublicSerializer
+from apps.users.services.privacy_service import PrivacyService
 
 
 class StatusFeedView(APIView):
@@ -78,11 +79,20 @@ class ViewStatusView(APIView):
     @extend_schema(tags=["Stories"], summary="Mark status as viewed")
     def post(self, request, status_id):
         try:
-            status_obj = Status.objects.get(id=status_id, expires_at__gt=timezone.now())
+            status_obj = Status.objects.select_related("user").get(
+                id=status_id, expires_at__gt=timezone.now()
+            )
         except Status.DoesNotExist:
             return api_error(message="Status not found or expired.", status_code=status.HTTP_404_NOT_FOUND)
         if status_obj.user_id == request.user.id:
             return api_error(message="Cannot view own status.", status_code=status.HTTP_400_BAD_REQUEST)
+        if not PrivacyService.can_view(
+            request.user, status_obj.user, status_obj.user.status_privacy
+        ):
+            return api_error(
+                message="This status is not available due to privacy settings.",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
         StatusRepository.mark_viewed(status_obj, request.user)
         return api_success(message="Marked as viewed.", data=None)
 

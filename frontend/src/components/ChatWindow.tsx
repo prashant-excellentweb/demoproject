@@ -271,9 +271,11 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
           onClick={() => conversation.is_group && setShowGroupInfo(true)}
         >
           <h3>{chatName}</h3>
-          <p className={other?.is_online ? "online-dot" : ""}>
-            {isBlocked ? "Blocked" : statusText}
-          </p>
+          {(isBlocked || statusText) && (
+            <p className={other?.is_online && !isBlocked ? "online-dot" : ""}>
+              {isBlocked ? "Blocked" : statusText}
+            </p>
+          )}
         </div>
         <button type="button" className="icon-btn"><Search size={20} /></button>
         <button type="button" className="icon-btn"><Phone size={20} /></button>

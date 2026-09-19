@@ -9,7 +9,8 @@ A full-featured WhatsApp-like chat application with SMS OTP login, real-time mes
 - **Media Messages** — Send text, images, videos, PDFs, and documents
 - **Status/Stories** — 24-hour expiring text, image, and video statuses
 - **User Profiles** — Display name, about, avatar photo
-- **Online Status** — See who's online and last seen
+- **Privacy controls** — Who can see profile photo, about, last seen, and status (`everyone` / `contacts` / `nobody`)
+- **Online Status** — See who's online and last seen (respects privacy)
 - **Read Receipts** — Message delivery and read indicators
 - **Typing Indicators** — Real-time typing notifications
 - **User Search** — Find contacts by name or phone number
@@ -115,6 +116,7 @@ Without Twilio credentials, OTP codes are printed to the server console.
 | ReDoc | http://localhost:9000/api/redoc/ |
 | OpenAPI JSON | http://localhost:9000/api/schema/ |
 | Flutter guide | `backend/docs/FLUTTER_API.md` |
+| Flutter privacy | `backend/docs/FLUTTER_PRIVACY.md` |
 | OpenAPI YAML | `backend/docs/openapi.yaml` |
 
 Regenerate schema after API changes:
@@ -129,7 +131,7 @@ python manage.py spectacular --file docs/openapi.yaml --validate
 |--------|----------|-------------|
 | POST | `/api/auth/send-otp/` | Send OTP to phone |
 | POST | `/api/auth/verify-otp/` | Verify OTP & get JWT |
-| GET/PATCH | `/api/auth/profile/` | Get/update profile |
+| GET/PATCH | `/api/auth/profile/` | Get/update profile (incl. privacy: photo / about / last seen / status) |
 | GET | `/api/auth/search/?q=` | Search users |
 | POST | `/api/auth/logout/` | Logout |
 

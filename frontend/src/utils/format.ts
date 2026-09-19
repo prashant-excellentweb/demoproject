@@ -16,9 +16,10 @@ export function formatChatTime(dateStr: string): string {
 }
 
 export function formatLastSeen(dateStr: string | null, isOnline: boolean): string {
+  // Backend redacts last_seen + is_online when privacy hides them (both null/false).
+  if (!dateStr && !isOnline) return "";
   if (isOnline) return "online";
-  if (!dateStr) return "offline";
-  return `last seen ${formatDistanceToNow(new Date(dateStr), { addSuffix: true })}`;
+  return `last seen ${formatDistanceToNow(new Date(dateStr!), { addSuffix: true })}`;
 }
 
 export function getInitials(user: User): string {
