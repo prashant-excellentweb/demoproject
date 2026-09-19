@@ -12,6 +12,7 @@ A full-featured WhatsApp-like chat application with SMS OTP login, real-time mes
 - **Privacy controls** — Who can see profile photo, about, last seen, and status (`everyone` / `contacts` / `nobody`)
 - **Online Status** — See who's online and last seen (respects privacy)
 - **Read Receipts** — Message delivery and read indicators
+- **Reply, Forward, Drafts** — Inline quotes, forward to other chats, per-chat unsent drafts
 - **Typing Indicators** — Real-time typing notifications
 - **User Search** — Find contacts by name or phone number
 
@@ -117,6 +118,7 @@ Without Twilio credentials, OTP codes are printed to the server console.
 | OpenAPI JSON | http://localhost:9000/api/schema/ |
 | Flutter guide | `backend/docs/FLUTTER_API.md` |
 | Flutter privacy | `backend/docs/FLUTTER_PRIVACY.md` |
+| Flutter reply / forward / draft | `backend/docs/FLUTTER_REPLY_FORWARD_DRAFT.md` |
 | OpenAPI YAML | `backend/docs/openapi.yaml` |
 
 Regenerate schema after API changes:

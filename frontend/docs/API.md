@@ -4,6 +4,7 @@ This app’s REST + WebSocket contract is documented for Flutter and web clients
 
 - **Flutter guide (payloads, examples):** [`../backend/docs/FLUTTER_API.md`](../backend/docs/FLUTTER_API.md)
 - **Flutter privacy (photo / about / last seen / status):** [`../backend/docs/FLUTTER_PRIVACY.md`](../backend/docs/FLUTTER_PRIVACY.md)
+- **Flutter reply / forward / draft:** [`../backend/docs/FLUTTER_REPLY_FORWARD_DRAFT.md`](../backend/docs/FLUTTER_REPLY_FORWARD_DRAFT.md)
 - **Flutter chat + WebSocket guide:** [`../backend/docs/FLUTTER_CHAT.md`](../backend/docs/FLUTTER_CHAT.md)
 - **Swagger UI:** http://localhost:9000/api/docs/
 - **OpenAPI YAML:** [`../backend/docs/openapi.yaml`](../backend/docs/openapi.yaml)
@@ -22,7 +23,19 @@ Tabs: **All** · **Unread** · **Favourites** · **Groups** · **Archived** · *
 | Report user | `POST /auth/users/{id}/report/` body `{ "reason", "details?", "conversation_id?" }` |
 | Delete account | `DELETE /auth/profile/` |
 
-Conversation payload includes `is_favourite`, `is_archived`, `is_blocked`, `is_pinned`. Archived chats are hidden from the main inbox filters. Pinned chats sort above favourites.
+Conversation payload includes `is_favourite`, `is_archived`, `is_blocked`, `is_pinned`, and `draft` (unsent text + optional quote). Archived chats are hidden from the main inbox filters. Pinned chats sort above favourites.
+
+## Reply, forward, draft
+
+| Action | API |
+|--------|-----|
+| Reply | `POST /chat/conversations/{id}/send/` with `reply_to_id` |
+| Forward | `POST /chat/conversations/{id}/messages/{messageId}/forward/` body `{ "conversation_ids": [2, 3] }` (max 10) |
+| Get draft | `GET /chat/conversations/{id}/draft/` |
+| Save draft | `PUT /chat/conversations/{id}/draft/` body `{ "content", "reply_to_id?" }` |
+| Clear draft | `DELETE /chat/conversations/{id}/draft/` (also cleared automatically after send) |
+
+Full Flutter walkthrough: [`FLUTTER_REPLY_FORWARD_DRAFT.md`](../backend/docs/FLUTTER_REPLY_FORWARD_DRAFT.md).
 
 ## Message delete (web + Flutter)
 

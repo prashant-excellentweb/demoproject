@@ -1,9 +1,40 @@
 from rest_framework import serializers
 
-from apps.chat.models import Conversation, Message
+from apps.chat.models import Conversation, Message, MessageDraft
 from apps.users.serializers import UserPublicSerializer
 
 ALLOWED_REACTIONS = ("👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "👏")
+
+# Quoted preview text is trimmed — clients only render one or two lines.
+REPLY_SNIPPET_LENGTH = 120
+
+
+class MessageQuoteSerializer(serializers.ModelSerializer):
+    """Lightweight quoted message shown above an inline reply."""
+
+    sender_id = serializers.IntegerField(read_only=True)
+    sender_name = serializers.SerializerMethodField()
+    content = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Message
+        fields = (
+            "id",
+            "sender_id",
+            "sender_name",
+            "message_type",
+            "content",
+            "file_name",
+            "is_deleted",
+        )
+
+    def get_sender_name(self, obj):
+        return obj.sender.display_name or obj.sender.phone_number
+
+    def get_content(self, obj):
+        if obj.is_deleted:
+            return ""
+        return obj.content[:REPLY_SNIPPET_LENGTH]
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -11,6 +42,7 @@ class MessageSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
     reactions = serializers.SerializerMethodField()
     my_reaction = serializers.SerializerMethodField()
+    reply_to = MessageQuoteSerializer(read_only=True)
 
     class Meta:
         model = Message
@@ -24,6 +56,9 @@ class MessageSerializer(serializers.ModelSerializer):
             "file_url",
             "file_name",
             "file_size",
+            "reply_to",
+            "is_forwarded",
+            "forwarded_from",
             "is_read",
             "is_deleted",
             "deleted_at",
@@ -34,6 +69,9 @@ class MessageSerializer(serializers.ModelSerializer):
         read_only_fields = (
             "id",
             "sender",
+            "reply_to",
+            "is_forwarded",
+            "forwarded_from",
             "is_read",
             "is_deleted",
             "deleted_at",
@@ -83,6 +121,7 @@ class MessageSerializer(serializers.ModelSerializer):
             data["file_size"] = 0
             data["reactions"] = []
             data["my_reaction"] = None
+            data["reply_to"] = None
         return data
 
 
@@ -124,6 +163,7 @@ class ConversationSerializer(serializers.ModelSerializer):
     is_archived = serializers.SerializerMethodField()
     is_blocked = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
+    draft = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
@@ -140,6 +180,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             "is_archived",
             "is_blocked",
             "is_pinned",
+            "draft",
             "last_message",
             "unread_count",
             "created_at",
@@ -183,6 +224,22 @@ class ConversationSerializer(serializers.ModelSerializer):
         if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
             return False
         return obj.pinned_by.filter(user=request.user).exists()
+
+    def get_draft(self, obj):
+        """Current user's unsent draft, or None. Uses the `user_drafts` prefetch."""
+        drafts = getattr(obj, "user_drafts", None)
+        if drafts is not None:
+            draft = drafts[0] if drafts else None
+        else:
+            request = self.context.get("request")
+            if not request or not getattr(request, "user", None) or not request.user.is_authenticated:
+                return None
+            draft = obj.drafts.select_related("reply_to", "reply_to__sender").filter(
+                user=request.user
+            ).first()
+        if not draft or not draft.content.strip():
+            return None
+        return MessageDraftSerializer(draft, context=self.context).data
 
     def get_last_message(self, obj):
         latest = getattr(obj, "latest_messages", None)
@@ -236,6 +293,32 @@ class UpdateGroupSerializer(serializers.ModelSerializer):
         return value
 
 
+class ForwardMessageSerializer(serializers.Serializer):
+    conversation_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        min_length=1,
+        max_length=10,
+        help_text="Target chats to forward this message into (max 10).",
+    )
+
+    def validate_conversation_ids(self, value):
+        return list(dict.fromkeys(value))
+
+
+class MessageDraftSerializer(serializers.ModelSerializer):
+    reply_to = MessageQuoteSerializer(read_only=True)
+
+    class Meta:
+        model = MessageDraft
+        fields = ("conversation", "content", "reply_to", "updated_at")
+        read_only_fields = fields
+
+
+class SaveDraftSerializer(serializers.Serializer):
+    content = serializers.CharField(allow_blank=True, max_length=10000)
+    reply_to_id = serializers.IntegerField(required=False, allow_null=True)
+
+
 class SendMessageSerializer(serializers.Serializer):
     content = serializers.CharField(required=False, allow_blank=True, default="")
     message_type = serializers.ChoiceField(
@@ -243,6 +326,11 @@ class SendMessageSerializer(serializers.Serializer):
         default=Message.MessageType.TEXT,
     )
     file = serializers.FileField(required=False, allow_null=True)
+    reply_to_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="ID of the message being quoted (inline reply).",
+    )
 
     def validate(self, data):
         msg_type = data.get("message_type", Message.MessageType.TEXT)

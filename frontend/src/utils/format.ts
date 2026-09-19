@@ -1,5 +1,5 @@
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
-import type { User } from "@/types";
+import type { Message, MessageQuote, User } from "@/types";
 
 export function formatMessageTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -56,4 +56,20 @@ export function getMessagePreview(message: {
     case "audio": return "🎵 Audio";
     default: return message.content || "";
   }
+}
+
+export function toMessageQuote(message: Message): MessageQuote {
+  return {
+    id: message.id,
+    sender_id: message.sender.id,
+    sender_name: getDisplayName(message.sender),
+    message_type: message.message_type,
+    content: (message.content || "").slice(0, 120),
+    file_name: message.file_name || "",
+    is_deleted: Boolean(message.is_deleted),
+  };
+}
+
+export function getQuotePreview(quote: MessageQuote): string {
+  return getMessagePreview(quote);
 }

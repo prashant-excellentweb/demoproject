@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, CheckCheck, FileText, SmilePlus, Trash2 } from "lucide-react";
+import { Check, CheckCheck, CornerUpLeft, FileText, Forward, SmilePlus, Trash2 } from "lucide-react";
 import type { Message } from "@/types";
-import { formatFileSize, formatMessageTime, getDisplayName } from "@/utils/format";
+import { formatFileSize, formatMessageTime, getDisplayName, getQuotePreview } from "@/utils/format";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "👏"];
 
@@ -12,6 +12,8 @@ interface Props {
   canDeleteForEveryone?: boolean;
   onDelete?: (message: Message, deleteFor: "me" | "everyone") => Promise<void> | void;
   onReact?: (message: Message, emoji: string) => Promise<void> | void;
+  onReply?: (message: Message) => void;
+  onForward?: (message: Message) => void;
 }
 
 export default function MessageBubble({
@@ -21,6 +23,8 @@ export default function MessageBubble({
   canDeleteForEveryone = false,
   onDelete,
   onReact,
+  onReply,
+  onForward,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [reactOpen, setReactOpen] = useState(false);
@@ -113,8 +117,10 @@ export default function MessageBubble({
 
   const reactions = message.reactions || [];
 
+  const quote = message.reply_to;
+
   return (
-    <div className={`message-row ${isSent ? "sent" : "received"}`}>
+    <div className={`message-row ${isSent ? "sent" : "received"}`} id={`msg-${message.id}`}>
       <div
         className={`message-bubble ${message.is_deleted ? "deleted" : ""}`}
         onContextMenu={(e) => {
@@ -125,6 +131,29 @@ export default function MessageBubble({
       >
         {showSenderName && !isSent && !message.is_deleted && (
           <div className="message-sender-name">{getDisplayName(message.sender)}</div>
+        )}
+        {message.is_forwarded && !message.is_deleted && (
+          <div className="message-forwarded-label">
+            <Forward size={12} />
+            Forwarded
+          </div>
+        )}
+        {quote && !message.is_deleted && (
+          <button
+            type="button"
+            className="reply-quote"
+            onClick={() => {
+              document.getElementById(`msg-${quote.id}`)?.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+              });
+            }}
+          >
+            <span className="reply-quote-name">{quote.sender_name}</span>
+            <span className="reply-quote-text">
+              {quote.is_deleted ? "This message was deleted" : getQuotePreview(quote)}
+            </span>
+          </button>
         )}
         {renderContent()}
 
@@ -150,6 +179,26 @@ export default function MessageBubble({
           <span className="message-time">{formatMessageTime(message.created_at)}</span>
           {isSent && !message.is_deleted && (
             message.is_read ? <CheckCheck size={14} color="#53bdeb" /> : <Check size={14} color="#8696a0" />
+          )}
+          {!message.is_deleted && onReply && (
+            <button
+              type="button"
+              className="message-action-btn"
+              title="Reply"
+              onClick={() => onReply(message)}
+            >
+              <CornerUpLeft size={13} />
+            </button>
+          )}
+          {!message.is_deleted && onForward && (
+            <button
+              type="button"
+              className="message-action-btn"
+              title="Forward"
+              onClick={() => onForward(message)}
+            >
+              <Forward size={13} />
+            </button>
           )}
           {!message.is_deleted && (
             <button
@@ -193,6 +242,32 @@ export default function MessageBubble({
 
         {menuOpen && !message.is_deleted && (
           <div className="message-action-menu" ref={menuRef}>
+            {onReply && (
+              <button
+                type="button"
+                className="neutral"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onReply(message);
+                }}
+              >
+                <CornerUpLeft size={14} />
+                Reply
+              </button>
+            )}
+            {onForward && (
+              <button
+                type="button"
+                className="neutral"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onForward(message);
+                }}
+              >
+                <Forward size={14} />
+                Forward
+              </button>
+            )}
             <button type="button" onClick={() => handleDelete("me")} disabled={deleting}>
               <Trash2 size={14} />
               {deleting ? "Deleting..." : "Delete for me"}

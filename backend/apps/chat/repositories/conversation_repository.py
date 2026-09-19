@@ -11,6 +11,7 @@ from apps.chat.models import (
     ConversationFavourite,
     ConversationPin,
     Message,
+    MessageDraft,
     MessageHidden,
     MessageReaction,
     MessageStatus,
@@ -79,11 +80,20 @@ class ConversationRepository:
                 ),
                 Prefetch(
                     "messages",
-                    queryset=Message.objects.select_related("sender")
+                    queryset=Message.objects.select_related(
+                        "sender", "reply_to", "reply_to__sender"
+                    )
                     .prefetch_related("reactions__user")
                     .exclude(hidden_for__user=user)
                     .order_by("-created_at")[:1],
                     to_attr="latest_messages",
+                ),
+                Prefetch(
+                    "drafts",
+                    queryset=MessageDraft.objects.filter(user=user).select_related(
+                        "reply_to", "reply_to__sender"
+                    ),
+                    to_attr="user_drafts",
                 ),
             )
             .annotate(
@@ -216,8 +226,13 @@ class MessageRepository:
         message_type: str = Message.MessageType.TEXT,
         file=None,
         file_name: str = "",
+        reply_to: Message | None = None,
+        forwarded_from: Message | None = None,
+        is_forwarded: bool = False,
+        file_size: int | None = None,
     ) -> Message:
-        file_size = file.size if file else 0
+        if file_size is None:
+            file_size = file.size if file else 0
         message = Message.objects.create(
             conversation=conversation,
             sender=sender,
@@ -226,16 +241,36 @@ class MessageRepository:
             file=file,
             file_name=file_name or (file.name if file else ""),
             file_size=file_size,
+            reply_to=reply_to,
+            forwarded_from=forwarded_from,
+            is_forwarded=is_forwarded,
         )
         conversation.updated_at = timezone.now()
         conversation.save(update_fields=["updated_at"])
 
-        for participant in conversation.participants.exclude(id=sender.id):
-            MessageStatus.objects.create(message=message, user=participant)
+        MessageStatus.objects.bulk_create(
+            [
+                MessageStatus(message=message, user=participant)
+                for participant in conversation.participants.exclude(id=sender.id)
+            ]
+        )
 
         # New activity brings archived chats back into the main inbox
         ConversationRepository.unarchive_for_participants(conversation)
         return message
+
+    @staticmethod
+    def get_quotable_message(conversation: Conversation, message_id: int) -> Message | None:
+        """Message that can be quoted/forwarded from this conversation, or None."""
+        return (
+            Message.objects.filter(
+                id=message_id,
+                conversation=conversation,
+                is_deleted=False,
+            )
+            .select_related("sender")
+            .first()
+        )
 
     @staticmethod
     def get_conversation_messages(
@@ -247,7 +282,7 @@ class MessageRepository:
         qs = (
             Message.objects.filter(conversation=conversation)
             .exclude(hidden_for__user=user)
-            .select_related("sender")
+            .select_related("sender", "reply_to", "reply_to__sender")
             .prefetch_related("reactions__user")
         )
         if before_id:
@@ -313,7 +348,7 @@ class MessageRepository:
         else:
             MessageReaction.objects.create(message=message, user=user, emoji=emoji)
         return (
-            Message.objects.select_related("sender")
+            Message.objects.select_related("sender", "reply_to", "reply_to__sender")
             .prefetch_related("reactions__user")
             .get(id=message.id)
         )

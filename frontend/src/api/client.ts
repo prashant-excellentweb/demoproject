@@ -1,5 +1,14 @@
 import axios, { type AxiosResponse } from "axios";
-import type { Conversation, ChatListFilter, Message, Status, StatusFeed, User } from "@/types";
+import type {
+  Conversation,
+  ChatListFilter,
+  ForwardResult,
+  Message,
+  MessageDraft,
+  Status,
+  StatusFeed,
+  User,
+} from "@/types";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -123,6 +132,17 @@ export const chatApi = {
     }),
   reactToMessage: (conversationId: number, messageId: number, emoji: string) =>
     api.post<Message>(`/chat/conversations/${conversationId}/messages/${messageId}/react/`, { emoji }),
+  forwardMessage: (conversationId: number, messageId: number, conversationIds: number[]) =>
+    api.post<ForwardResult>(
+      `/chat/conversations/${conversationId}/messages/${messageId}/forward/`,
+      { conversation_ids: conversationIds }
+    ),
+  getDraft: (conversationId: number) =>
+    api.get<MessageDraft | null>(`/chat/conversations/${conversationId}/draft/`),
+  saveDraft: (conversationId: number, data: { content: string; reply_to_id?: number | null }) =>
+    api.put<MessageDraft | null>(`/chat/conversations/${conversationId}/draft/`, data),
+  clearDraft: (conversationId: number) =>
+    api.delete<null>(`/chat/conversations/${conversationId}/draft/`),
   markRead: (conversationId: number) =>
     api.post<null>(`/chat/conversations/${conversationId}/read/`),
 };

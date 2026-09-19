@@ -69,6 +69,23 @@ class Message(models.Model):
     file = models.FileField(upload_to="messages/", blank=True, null=True)
     file_name = models.CharField(max_length=255, blank=True)
     file_size = models.PositiveIntegerField(default=0)
+    reply_to = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replies",
+        help_text="Message this one quotes (inline reply).",
+    )
+    forwarded_from = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="forwards",
+        help_text="Original message this one was forwarded from.",
+    )
+    is_forwarded = models.BooleanField(default=False)
     is_read = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
@@ -219,6 +236,40 @@ class ConversationBlock(models.Model):
 
     def __str__(self):
         return f"user {self.user_id} blocked conversation {self.conversation_id}"
+
+
+class MessageDraft(models.Model):
+    """Per-user unsent draft for a conversation (one row per user per chat)."""
+
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name="drafts",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="message_drafts",
+    )
+    content = models.TextField(blank=True)
+    reply_to = models.ForeignKey(
+        Message,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="draft_replies",
+        help_text="Quoted message kept with the draft.",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("conversation", "user")
+        indexes = [
+            models.Index(fields=["user", "-updated_at"]),
+        ]
+
+    def __str__(self):
+        return f"draft by user {self.user_id} in conversation {self.conversation_id}"
 
 
 class ConversationPin(models.Model):

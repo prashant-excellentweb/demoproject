@@ -6,6 +6,9 @@
 > **Privacy (Profile photo / About / Last seen / Status):**  
 > see **[`FLUTTER_PRIVACY.md`](./FLUTTER_PRIVACY.md)** — settings API, redaction rules, Flutter models & UI checklist.
 
+> **Reply, Forward & Draft:**  
+> see **[`FLUTTER_REPLY_FORWARD_DRAFT.md`](./FLUTTER_REPLY_FORWARD_DRAFT.md)** — `reply_to_id`, forward picker, draft autosave.
+
 ## Standard response (every API)
 
 ```json
@@ -418,7 +421,11 @@ class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
 | PATCH | `/chat/conversations/{id}/group/` | Update group name/avatar (admin only, multipart) |
 | POST | `/chat/conversations/{id}/members/{user_id}/remove/` | Remove member (admin only) |
 | GET | `/chat/conversations/{id}/messages/?before=100` | Get messages (paginated; excludes your "delete for me") |
-| POST | `/chat/conversations/{id}/send/` | Send message (multipart) |
+| POST | `/chat/conversations/{id}/send/` | Send message (multipart; optional `reply_to_id`) |
+| POST | `/chat/conversations/{id}/messages/{message_id}/forward/` | Forward to other chats `{ "conversation_ids": [2,3] }` (max 10) |
+| GET | `/chat/conversations/{id}/draft/` | Get unsent draft (`null` if none) |
+| PUT | `/chat/conversations/{id}/draft/` | Save draft `{ "content", "reply_to_id"? }` — blank content clears |
+| DELETE | `/chat/conversations/{id}/draft/` | Clear draft |
 | DELETE | `/chat/conversations/{id}/messages/{message_id}/` | Delete for me **or** everyone |
 | POST | `/chat/conversations/{id}/messages/{message_id}/react/` | Add/toggle emoji reaction |
 | POST | `/chat/conversations/{id}/read/` | Mark as read |

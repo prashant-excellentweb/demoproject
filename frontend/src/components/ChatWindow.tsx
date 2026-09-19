@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Flag, MoreVertical, Paperclip, Phone, Search, Send, Video } from "lucide-react";
+import { Flag, MoreVertical, Paperclip, Phone, Search, Send, Video, X } from "lucide-react";
 import { chatApi } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/context/WebSocketContext";
-import type { Conversation, Message } from "@/types";
+import type { Conversation, Message, MessageQuote } from "@/types";
 import Avatar from "./Avatar";
 import EmojiPicker from "./EmojiPicker";
+import ForwardPicker from "./ForwardPicker";
 import GroupAvatar from "./GroupAvatar";
 import GroupInfoPanel from "./GroupInfoPanel";
 import MessageBubble from "./MessageBubble";
-import { formatLastSeen, getDisplayName, getOtherParticipant } from "@/utils/format";
+import { formatLastSeen, getDisplayName, getOtherParticipant, getQuotePreview, toMessageQuote } from "@/utils/format";
 import { isGroupAdmin } from "@/utils/group";
 import { reportUser } from "@/utils/report";
 
@@ -24,6 +25,9 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   const { joinConversation, leaveConversation, sendTyping, markRead, onMessage, onTyping, onMessageDeleted, onMessageUpdated } = useWebSocket();
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
+  const [replyTo, setReplyTo] = useState<MessageQuote | null>(null);
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const [forwarding, setForwarding] = useState<Message | null>(null);
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -35,6 +39,7 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const skipDraftSave = useRef(true);
 
   const appendMessage = useCallback((msg: Message) => {
     setMessages((prev) => {
@@ -115,6 +120,56 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   }, [conversation.id, joinConversation, leaveConversation, loadMessages]);
 
   useEffect(() => {
+    setDraftHydrated(false);
+    setText("");
+    setReplyTo(null);
+    let cancelled = false;
+    chatApi
+      .getDraft(conversation.id)
+      .then((res) => {
+        if (cancelled) return;
+        const draft = res.data;
+        if (draft?.content) setText(draft.content);
+        if (draft?.reply_to && !draft.reply_to.is_deleted) setReplyTo(draft.reply_to);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) {
+          skipDraftSave.current = true;
+          setDraftHydrated(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversation.id]);
+
+  useEffect(() => {
+    if (!draftHydrated || isBlocked) return;
+    if (skipDraftSave.current) {
+      skipDraftSave.current = false;
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      chatApi
+        .saveDraft(conversation.id, {
+          content: text,
+          reply_to_id: replyTo?.id ?? null,
+        })
+        .then(() => onRefreshList())
+        .catch(() => {});
+    }, 500);
+    return () => window.clearTimeout(handle);
+  }, [text, replyTo, draftHydrated, conversation.id, isBlocked]);
+
+  const handleReply = useCallback((msg: Message) => {
+    setReplyTo(toMessageQuote(msg));
+    textareaRef.current?.focus();
+  }, []);
+
+  const clearReply = useCallback(() => setReplyTo(null), []);
+
+  useEffect(() => {
     if (!headerMenuOpen) return;
     const onDocClick = (e: MouseEvent) => {
       if (headerMenuRef.current && !headerMenuRef.current.contains(e.target as Node)) {
@@ -176,10 +231,12 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     const form = new FormData();
     form.append("content", text.trim());
     form.append("message_type", "text");
+    if (replyTo) form.append("reply_to_id", String(replyTo.id));
     try {
       const res = await chatApi.sendMessage(conversation.id, form);
       appendMessage(res.data);
       setText("");
+      setReplyTo(null);
       onRefreshList();
     } catch (e) {
       console.error(e);
@@ -200,9 +257,11 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     else if (["mp4", "webm", "mov"].includes(ext)) type = "video";
     else if (ext === "pdf") type = "pdf";
     form.append("message_type", type);
+    if (replyTo) form.append("reply_to_id", String(replyTo.id));
     try {
       const res = await chatApi.sendMessage(conversation.id, form);
       appendMessage(res.data);
+      setReplyTo(null);
       onRefreshList();
     } catch (err) {
       console.error(err);
@@ -280,6 +339,15 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
         </div>
       </div>
 
+      {forwarding && (
+        <ForwardPicker
+          sourceConversationId={conversation.id}
+          message={forwarding}
+          onClose={() => setForwarding(null)}
+          onForwarded={onRefreshList}
+        />
+      )}
+
       {showGroupInfo && conversation.is_group && (
         <GroupInfoPanel
           conversation={conversation}
@@ -307,6 +375,8 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
             canDeleteForEveryone={canDeleteForEveryone(msg)}
             onDelete={handleDeleteMessage}
             onReact={handleReactToMessage}
+            onReply={handleReply}
+            onForward={setForwarding}
           />
         ))}
         <div ref={messagesEndRef} />
@@ -317,36 +387,51 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
       )}
 
       {!isBlocked ? (
-        <div className="message-input-area">
-          <EmojiPicker
-            open={emojiOpen}
-            onToggle={() => setEmojiOpen((o) => !o)}
-            onClose={() => setEmojiOpen(false)}
-            onSelect={insertEmoji}
-          />
-          <button type="button" className="attach-btn" onClick={() => fileInputRef.current?.click()}>
-            <Paperclip size={22} />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            hidden
-            accept="image/*,video/*,.pdf,.doc,.docx,.txt,.xls,.xlsx"
-            onChange={handleFile}
-          />
-          <div className="message-input-wrapper">
-            <textarea
-              ref={textareaRef}
-              placeholder="Type a message"
-              value={text}
-              onChange={(e) => handleTextChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              rows={1}
+        <div className="composer">
+          {replyTo && (
+            <div className="reply-banner">
+              <div className="reply-banner-body">
+                <span className="reply-banner-name">Replying to {replyTo.sender_name}</span>
+                <span className="reply-banner-text">
+                  {replyTo.is_deleted ? "This message was deleted" : getQuotePreview(replyTo)}
+                </span>
+              </div>
+              <button type="button" className="icon-btn" title="Cancel reply" onClick={clearReply}>
+                <X size={18} />
+              </button>
+            </div>
+          )}
+          <div className="message-input-area">
+            <EmojiPicker
+              open={emojiOpen}
+              onToggle={() => setEmojiOpen((o) => !o)}
+              onClose={() => setEmojiOpen(false)}
+              onSelect={insertEmoji}
             />
+            <button type="button" className="attach-btn" onClick={() => fileInputRef.current?.click()}>
+              <Paperclip size={22} />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              hidden
+              accept="image/*,video/*,.pdf,.doc,.docx,.txt,.xls,.xlsx"
+              onChange={handleFile}
+            />
+            <div className="message-input-wrapper">
+              <textarea
+                ref={textareaRef}
+                placeholder={replyTo ? "Type a reply" : "Type a message"}
+                value={text}
+                onChange={(e) => handleTextChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                rows={1}
+              />
+            </div>
+            <button type="button" className="send-btn" onClick={handleSend} disabled={!text.trim() || sending}>
+              <Send size={20} />
+            </button>
           </div>
-          <button type="button" className="send-btn" onClick={handleSend} disabled={!text.trim() || sending}>
-            <Send size={20} />
-          </button>
         </div>
       ) : (
         <div className="message-input-area blocked-input">

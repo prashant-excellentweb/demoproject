@@ -4,6 +4,7 @@ End-to-end guide to implement WhatsApp-style chat in Flutter against this backen
 
 Related docs:
 - Full REST reference: [`FLUTTER_API.md`](./FLUTTER_API.md)
+- Reply, forward, drafts: [`FLUTTER_REPLY_FORWARD_DRAFT.md`](./FLUTTER_REPLY_FORWARD_DRAFT.md)
 - Swagger UI: `http://localhost:9000/api/docs/`
 
 ---
@@ -858,4 +859,5 @@ Dev OTP (if enabled on server): `111111`
 
 ---
 
-For auth, profile, stories, and full endpoint tables, see [`FLUTTER_API.md`](./FLUTTER_API.md).
+For auth, profile, stories, and full endpoint tables, see [`FLUTTER_API.md`](./FLUTTER_API.md).  
+For **inline reply, forward, and drafts**, see [`FLUTTER_REPLY_FORWARD_DRAFT.md`](./FLUTTER_REPLY_FORWARD_DRAFT.md).

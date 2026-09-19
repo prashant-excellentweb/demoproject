@@ -583,6 +583,11 @@ a {
   white-space: nowrap;
 }
 
+.chat-preview.draft {
+  color: var(--wa-teal);
+  font-style: italic;
+}
+
 .unread-badge {
   background: var(--wa-green);
   color: white;
@@ -689,6 +694,47 @@ a {
 .message-row.sent .message-bubble {
   background: var(--wa-bubble-out);
   border-top-right-radius: 0;
+}
+
+.message-forwarded-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--wa-text-secondary);
+  margin-bottom: 4px;
+}
+
+.reply-quote {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border: none;
+  border-left: 3px solid var(--wa-teal-light);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  text-align: left;
+}
+
+.reply-quote-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wa-teal);
+}
+
+.reply-quote-text {
+  font-size: 12px;
+  color: var(--wa-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .message-text {
@@ -832,6 +878,10 @@ a {
   text-align: left;
 }
 
+.message-action-menu button.neutral {
+  color: var(--wa-text);
+}
+
 .message-action-menu button:hover {
   background: var(--wa-hover);
 }
@@ -888,6 +938,61 @@ a {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+}
+
+.composer {
+  background: var(--wa-input-bg);
+}
+
+.reply-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 16px 0;
+  padding: 8px 10px;
+  background: var(--wa-panel);
+  border-left: 4px solid var(--wa-teal-light);
+  border-radius: 8px;
+}
+
+.reply-banner-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reply-banner-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wa-teal);
+}
+
+.reply-banner-text {
+  font-size: 13px;
+  color: var(--wa-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forward-picker-hint {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--wa-text-secondary);
+}
+
+.forward-option {
+  cursor: pointer;
+}
+
+.forward-option input {
+  margin-right: 4px;
+}
+
+.forward-option.selected {
+  background: rgba(18, 140, 126, 0.08);
 }
 
 .message-input-area {

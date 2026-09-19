@@ -6,19 +6,35 @@ from rest_framework.views import APIView
 from apps.chat.consumers import broadcast_message_deleted, broadcast_message_updated, broadcast_new_message
 from apps.chat.models import Conversation, Message
 from apps.chat.repositories.conversation_repository import ConversationRepository, MessageRepository
+from apps.chat.repositories.draft_repository import DraftRepository
 from apps.chat.serializers import (
     ConversationActionSerializer,
     ConversationSerializer,
     CreateDirectChatSerializer,
     CreateGroupSerializer,
     DeleteMessageSerializer,
+    ForwardMessageSerializer,
+    MessageDraftSerializer,
     MessageSerializer,
     ReactToMessageSerializer,
+    SaveDraftSerializer,
     SendMessageSerializer,
     UpdateGroupSerializer,
 )
+from apps.chat.services.message_service import MessageService
 from apps.common.responses import api_error, api_success
 from apps.users.models import User
+
+
+def _get_user_conversation(request, conversation_id):
+    """Fetch a conversation the caller participates in, or an error response."""
+    try:
+        conv = Conversation.objects.get(id=conversation_id)
+    except Conversation.DoesNotExist:
+        return None, api_error(message="Conversation not found.", status_code=status.HTTP_404_NOT_FOUND)
+    if not ConversationRepository.user_in_conversation(conv, request.user):
+        return None, api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
+    return conv, None
 
 
 def _get_group_conversation(request, conversation_id):
@@ -348,6 +364,11 @@ class SendMessageView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        try:
+            reply_to = MessageService.resolve_reply_target(conv, data.get("reply_to_id"))
+        except ValueError as exc:
+            return api_error(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+
         message_type = data.get("message_type", Message.MessageType.TEXT)
         file = data.get("file")
         if file and message_type == Message.MessageType.TEXT:
@@ -360,13 +381,126 @@ class SendMessageView(APIView):
             message_type=message_type,
             file=file,
             file_name=file.name if file else "",
+            reply_to=reply_to,
         )
+        # The draft that produced this message is no longer needed.
+        MessageService.clear_draft_after_send(conv, request.user)
         broadcast_new_message(message, request)
         return api_success(
             data=MessageSerializer(message, context={"request": request}).data,
             message="Message sent successfully.",
             status_code=status.HTTP_201_CREATED,
         )
+
+
+class ForwardMessageView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="Forward a message to other chats",
+        description=(
+            "Copies the message into each target conversation (max 10). "
+            "Copies are flagged `is_forwarded` and keep `forwarded_from` pointing at "
+            "the original message. Returns the created messages plus per-target failures."
+        ),
+        request=ForwardMessageSerializer,
+        responses={201: MessageSerializer(many=True)},
+    )
+    def post(self, request, conversation_id, message_id):
+        conv, error = _get_user_conversation(request, conversation_id)
+        if error:
+            return error
+
+        message = MessageRepository.get_quotable_message(conv, message_id)
+        if message is None:
+            return api_error(
+                message="Message not found or deleted.",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = ForwardMessageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        created, failures = MessageService.forward_message(
+            message,
+            request.user,
+            serializer.validated_data["conversation_ids"],
+        )
+        for copy in created:
+            broadcast_new_message(copy, request)
+
+        if not created:
+            return api_error(
+                message=failures[0]["error"] if failures else "Nothing was forwarded.",
+                data={"failed": failures},
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return api_success(
+            data={
+                "forwarded": MessageSerializer(created, many=True, context={"request": request}).data,
+                "failed": failures,
+            },
+            message=f"Message forwarded to {len(created)} chat(s).",
+            status_code=status.HTTP_201_CREATED,
+        )
+
+
+class MessageDraftView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="Get unsent draft for a chat",
+        responses={200: MessageDraftSerializer},
+    )
+    def get(self, request, conversation_id):
+        conv, error = _get_user_conversation(request, conversation_id)
+        if error:
+            return error
+        draft = DraftRepository.get(conv, request.user)
+        return api_success(
+            data=MessageDraftSerializer(draft, context={"request": request}).data if draft else None,
+            message="Draft fetched successfully.",
+        )
+
+    @extend_schema(
+        tags=["Chat"],
+        summary="Save or clear unsent draft",
+        description="Blank `content` clears the draft. Pass `reply_to_id` to keep a quoted message with it.",
+        request=SaveDraftSerializer,
+        responses={200: MessageDraftSerializer},
+    )
+    def put(self, request, conversation_id):
+        conv, error = _get_user_conversation(request, conversation_id)
+        if error:
+            return error
+
+        serializer = SaveDraftSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        content = serializer.validated_data["content"]
+
+        if not content.strip():
+            DraftRepository.clear(conv, request.user)
+            return api_success(data=None, message="Draft cleared.")
+
+        try:
+            reply_to = MessageService.resolve_reply_target(
+                conv, serializer.validated_data.get("reply_to_id")
+            )
+        except ValueError as exc:
+            return api_error(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+
+        draft = DraftRepository.save(conv, request.user, content=content, reply_to=reply_to)
+        return api_success(
+            data=MessageDraftSerializer(draft, context={"request": request}).data,
+            message="Draft saved.",
+        )
+
+    @extend_schema(tags=["Chat"], summary="Delete unsent draft")
+    def delete(self, request, conversation_id):
+        conv, error = _get_user_conversation(request, conversation_id)
+        if error:
+            return error
+        DraftRepository.clear(conv, request.user)
+        return api_success(data=None, message="Draft cleared.")
 
 
 class DeleteMessageView(APIView):

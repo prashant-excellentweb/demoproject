@@ -7,6 +7,7 @@ from apps.chat.models import (
     ConversationFavourite,
     ConversationPin,
     Message,
+    MessageDraft,
     MessageHidden,
     MessageReaction,
     MessageStatus,
@@ -21,8 +22,24 @@ class ConversationAdmin(admin.ModelAdmin):
 
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
-    list_display = ("id", "conversation", "sender", "message_type", "is_read", "is_deleted", "created_at")
-    list_filter = ("message_type", "is_read", "is_deleted")
+    list_display = (
+        "id",
+        "conversation",
+        "sender",
+        "message_type",
+        "reply_to",
+        "is_forwarded",
+        "is_read",
+        "is_deleted",
+        "created_at",
+    )
+    list_filter = ("message_type", "is_forwarded", "is_read", "is_deleted")
+
+
+@admin.register(MessageDraft)
+class MessageDraftAdmin(admin.ModelAdmin):
+    list_display = ("conversation", "user", "updated_at")
+    search_fields = ("content",)
 
 
 @admin.register(MessageStatus)

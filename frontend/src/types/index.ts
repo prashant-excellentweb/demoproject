@@ -35,22 +35,50 @@ export interface MessageReactionSummary {
   user_ids: number[];
 }
 
+export type MessageType = "text" | "image" | "video" | "pdf" | "document" | "audio";
+
+/** Nested quote shown above an inline reply (and on drafts). */
+export interface MessageQuote {
+  id: number;
+  sender_id: number;
+  sender_name: string;
+  message_type: MessageType;
+  content: string;
+  file_name: string;
+  is_deleted: boolean;
+}
+
+export interface MessageDraft {
+  conversation: number;
+  content: string;
+  reply_to: MessageQuote | null;
+  updated_at: string;
+}
+
 export interface Message {
   id: number;
   conversation: number;
   sender: User;
-  message_type: "text" | "image" | "video" | "pdf" | "document" | "audio";
+  message_type: MessageType;
   content: string;
   file?: string;
   file_url?: string | null;
   file_name: string;
   file_size: number;
+  reply_to?: MessageQuote | null;
+  is_forwarded?: boolean;
+  forwarded_from?: number | null;
   is_read: boolean;
   is_deleted?: boolean;
   deleted_at?: string | null;
   reactions?: MessageReactionSummary[];
   my_reaction?: string | null;
   created_at: string;
+}
+
+export interface ForwardResult {
+  forwarded: Message[];
+  failed: { conversation_id: number; error: string }[];
 }
 
 export interface Conversation {
@@ -66,6 +94,7 @@ export interface Conversation {
   is_blocked?: boolean;
   is_pinned?: boolean;
   last_message: Message | null;
+  draft?: MessageDraft | null;
   unread_count: number;
   created_at: string;
   updated_at: string;

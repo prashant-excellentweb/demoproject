@@ -278,11 +278,14 @@ export default function ChatList({
         {filtered.map((c) => {
           const avatarUser = getChatAvatar(c);
           const lastMsg = c.last_message;
-          const preview = lastMsg
-            ? c.is_group
-              ? `${getDisplayName(lastMsg.sender)}: ${getMessagePreview(lastMsg)}`
-              : getMessagePreview(lastMsg)
-            : "No messages yet";
+          const draftText = c.draft?.content?.trim();
+          const preview = draftText
+            ? `Draft: ${draftText}`
+            : lastMsg
+              ? c.is_group
+                ? `${getDisplayName(lastMsg.sender)}: ${getMessagePreview(lastMsg)}`
+                : getMessagePreview(lastMsg)
+              : "No messages yet";
           return (
             <div
               key={c.id}
@@ -307,7 +310,7 @@ export default function ChatList({
                   )}
                 </div>
                 <div className="chat-info-top">
-                  <span className="chat-preview">
+                  <span className={`chat-preview${draftText && !c.is_blocked ? " draft" : ""}`}>
                     {c.is_blocked ? "Blocked" : preview}
                   </span>
                   <span className="chat-item-actions">
