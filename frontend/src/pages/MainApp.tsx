@@ -19,6 +19,7 @@ export default function MainApp() {
   const [showCreateStatus, setShowCreateStatus] = useState(false);
   const [statusView, setStatusView] = useState<{ userId: number; statuses: Status[] } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [jumpToMessageId, setJumpToMessageId] = useState<number | null>(null);
 
   const refresh = () => setRefreshKey((k) => k + 1);
 
@@ -30,7 +31,7 @@ export default function MainApp() {
     setActiveConv((current) => {
       if (!current) return convs[0] ?? null;
       const updated = convs.find((c) => c.id === current.id);
-      return updated ?? convs[0] ?? null;
+      return updated ?? current;
     });
   }, []);
 
@@ -67,7 +68,10 @@ export default function MainApp() {
     <div className="app-container chat-open">
       <ChatList
         activeId={activeConv?.id ?? null}
-        onSelect={setActiveConv}
+        onSelect={(conv, messageId) => {
+          setActiveConv(conv);
+          setJumpToMessageId(messageId ?? null);
+        }}
         onNewChat={() => setShowNewChat(true)}
         onNewGroup={() => setShowNewGroup(true)}
         onProfile={() => setShowProfile(true)}
@@ -82,6 +86,7 @@ export default function MainApp() {
           conversation={activeConv}
           onRefreshList={refresh}
           onConversationUpdate={setActiveConv}
+          focusMessageId={jumpToMessageId}
         />
       ) : (
         <div className="chat-window-empty">

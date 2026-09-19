@@ -15,7 +15,7 @@ import {
 import { chatApi } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/context/WebSocketContext";
-import type { ChatListFilter, Conversation } from "@/types";
+import type { ChatListFilter, Conversation, MessageSearchHit } from "@/types";
 import Avatar from "./Avatar";
 import GroupAvatar from "./GroupAvatar";
 import StatusBar from "./StatusBar";
@@ -24,6 +24,7 @@ import {
   getDisplayName,
   getMessagePreview,
   getOtherParticipant,
+  conversationFromSearchHit,
 } from "@/utils/format";
 
 const FILTERS: { id: ChatListFilter; label: string }[] = [
@@ -37,7 +38,7 @@ const FILTERS: { id: ChatListFilter; label: string }[] = [
 
 interface Props {
   activeId: number | null;
-  onSelect: (conv: Conversation) => void;
+  onSelect: (conv: Conversation, jumpToMessageId?: number) => void;
   onNewChat: () => void;
   onNewGroup: () => void;
   onProfile: () => void;
@@ -62,6 +63,8 @@ export default function ChatList({
   const { onMessage, connected } = useWebSocket();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [search, setSearch] = useState("");
+  const [messageHits, setMessageHits] = useState<MessageSearchHit[]>([]);
+  const [searchingMessages, setSearchingMessages] = useState(false);
   const [filter, setFilter] = useState<ChatListFilter>("all");
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -100,6 +103,24 @@ export default function ChatList({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [menuOpenId]);
+
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) {
+      setMessageHits([]);
+      setSearchingMessages(false);
+      return;
+    }
+    setSearchingMessages(true);
+    const timer = window.setTimeout(() => {
+      chatApi
+        .searchAllMessages(q)
+        .then((res) => setMessageHits(res.data.results || []))
+        .catch(console.error)
+        .finally(() => setSearchingMessages(false));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   const applyConversationUpdate = (updated: Conversation) => {
     setConversations((prev) => {
@@ -247,7 +268,7 @@ export default function ChatList({
         <div className="search-wrapper">
           <Search size={18} />
           <input
-            placeholder="Search or start new chat"
+            placeholder="Search chats or messages"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -272,7 +293,7 @@ export default function ChatList({
       <StatusBar onViewStatus={onViewStatus} onCreateStatus={onCreateStatus} />
 
       <div className="chat-list">
-        {filtered.length === 0 && (
+        {filtered.length === 0 && search.trim().length < 2 && (
           <p className="chat-filter-empty">{emptyMessage()}</p>
         )}
         {filtered.map((c) => {
@@ -360,6 +381,48 @@ export default function ChatList({
             </div>
           );
         })}
+        {search.trim().length >= 2 && (
+          <div className="message-search-section">
+            <h4>Messages</h4>
+            {searchingMessages && (
+              <p className="chat-filter-empty">Searching messages…</p>
+            )}
+            {!searchingMessages && messageHits.length === 0 && (
+              <p className="chat-filter-empty">No matching messages</p>
+            )}
+            {messageHits.map((hit) => {
+              const fromList = conversations.find((c) => c.id === hit.chat.id);
+              const conv = fromList || conversationFromSearchHit(hit);
+              const other = !hit.chat.is_group
+                ? hit.chat.participants.find((p) => p.id !== user!.id)
+                : undefined;
+              return (
+                <div
+                  key={`msg-${hit.id}`}
+                  className="chat-item message-search-hit"
+                  onClick={() => onSelect(conv, hit.id)}
+                >
+                  {hit.chat.is_group || !other ? (
+                    <GroupAvatar name={hit.chat.group_name} imageUrl={hit.chat.group_avatar_url} />
+                  ) : (
+                    <Avatar user={other} />
+                  )}
+                  <div className="chat-info">
+                    <div className="chat-info-top">
+                      <span className="chat-name">{hit.chat.name}</span>
+                      <span className="chat-time">{formatChatTime(hit.created_at)}</span>
+                    </div>
+                    <div className="chat-info-top">
+                      <span className="chat-preview">
+                        {getDisplayName(hit.sender)}: {hit.snippet}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

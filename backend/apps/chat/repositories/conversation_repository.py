@@ -290,6 +290,103 @@ class MessageRepository:
         return qs.order_by("-created_at")[:limit]
 
     @staticmethod
+    def get_messages_around(
+        conversation: Conversation,
+        user: User,
+        around_id: int,
+        limit: int = 50,
+    ):
+        """Chronological window of messages centered on `around_id` (for search jump)."""
+        visible = (
+            Message.objects.filter(conversation=conversation)
+            .exclude(hidden_for__user=user)
+        )
+        try:
+            target = (
+                visible.select_related("sender", "reply_to", "reply_to__sender")
+                .prefetch_related("reactions__user")
+                .get(id=around_id)
+            )
+        except Message.DoesNotExist:
+            return []
+
+        half = max(limit // 2, 1)
+        older = list(
+            visible.filter(
+                Q(created_at__lt=target.created_at)
+                | Q(created_at=target.created_at, id__lt=target.id)
+            )
+            .select_related("sender", "reply_to", "reply_to__sender")
+            .prefetch_related("reactions__user")
+            .order_by("-created_at", "-id")[:half]
+        )
+        newer = list(
+            visible.filter(
+                Q(created_at__gt=target.created_at)
+                | Q(created_at=target.created_at, id__gt=target.id)
+            )
+            .select_related("sender", "reply_to", "reply_to__sender")
+            .prefetch_related("reactions__user")
+            .order_by("created_at", "id")[:half]
+        )
+        return list(reversed(older)) + [target] + newer
+
+    @staticmethod
+    def search_messages(
+        user: User,
+        query: str,
+        *,
+        conversation: Conversation | None = None,
+        before_id: int | None = None,
+        limit: int = 30,
+    ):
+        """
+        Text/file-name search over messages the user can see.
+
+        Newest first. `before_id` is a cursor (created_at, id) of the last hit.
+        """
+        qs = Message.objects.filter(
+            conversation__participants=user,
+            is_deleted=False,
+        ).exclude(hidden_for__user=user)
+        if conversation is not None:
+            qs = qs.filter(conversation=conversation)
+        qs = qs.filter(Q(content__icontains=query) | Q(file_name__icontains=query))
+        if before_id:
+            cursor = (
+                Message.objects.filter(id=before_id)
+                .values("created_at", "id")
+                .first()
+            )
+            if cursor:
+                qs = qs.filter(
+                    Q(created_at__lt=cursor["created_at"])
+                    | Q(created_at=cursor["created_at"], id__lt=cursor["id"])
+                )
+        return list(
+            qs.select_related("sender", "conversation")
+            .prefetch_related(
+                Prefetch(
+                    "conversation__participants",
+                    queryset=User.objects.only(
+                        "id",
+                        "display_name",
+                        "phone_number",
+                        "avatar",
+                        "is_online",
+                        "last_seen",
+                        "about",
+                        "profile_photo_privacy",
+                        "about_privacy",
+                        "last_seen_privacy",
+                        "status_privacy",
+                    ),
+                )
+            )
+            .order_by("-created_at", "-id")[:limit]
+        )
+
+    @staticmethod
     def mark_as_read(conversation: Conversation, user: User):
         Message.objects.filter(
             conversation=conversation,

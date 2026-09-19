@@ -6,6 +6,7 @@ Related docs:
 - Full REST reference: [`FLUTTER_API.md`](./FLUTTER_API.md)
 - Reply, forward, drafts: [`FLUTTER_REPLY_FORWARD_DRAFT.md`](./FLUTTER_REPLY_FORWARD_DRAFT.md)
 - Edit message (15 min window): [`FLUTTER_EDIT_MESSAGE.md`](./FLUTTER_EDIT_MESSAGE.md)
+- Message search: [`FLUTTER_MESSAGE_SEARCH.md`](./FLUTTER_MESSAGE_SEARCH.md)
 - Swagger UI: `http://localhost:9000/api/docs/`
 
 ---
@@ -730,6 +731,7 @@ Simplest reliable approach: on any `message` / `message_deleted`, call `fetchCon
 | Delete for everyone | ✅ | ✅ `message_deleted` |
 | React | ✅ | ✅ `message_updated` |
 | Edit text (15 min) | ✅ `PATCH …/edit/` | ✅ `message_updated` |
+| Search messages | ✅ in-chat + global | — |
 | Pin / archive / block / favourite | ✅ | — |
 | Report user | ✅ | — |
 | Online presence | Profile fields | Set automatically on WS connect/disconnect (`is_online`, `last_seen`) |

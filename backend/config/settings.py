@@ -200,6 +200,11 @@ Validation errors put field errors inside `data`.
 - Body: `{ "content": "updated text" }`
 - Sender only, text messages, within 15 minutes of send. Broadcasts `message_updated`.
 
+## Message search
+- `GET /api/chat/conversations/{id}/messages/search/?q=` — in this chat
+- `GET /api/chat/messages/search/?q=` — all chats (min 2 characters)
+- `GET /api/chat/conversations/{id}/messages/?around=` — load history around a hit
+
 ## Media uploads
 Use `multipart/form-data` for messages, profile avatar, and status media.
     """,

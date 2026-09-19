@@ -5,6 +5,7 @@ import type {
   ForwardResult,
   Message,
   MessageDraft,
+  MessageSearchResponse,
   Status,
   StatusFeed,
   User,
@@ -112,9 +113,20 @@ export const chatApi = {
     }),
   removeGroupMember: (conversationId: number, userId: number) =>
     api.post<Conversation>(`/chat/conversations/${conversationId}/members/${userId}/remove/`),
-  getMessages: (conversationId: number, before?: number) =>
+  getMessages: (conversationId: number, opts?: { before?: number; around?: number }) =>
     api.get<Message[]>(`/chat/conversations/${conversationId}/messages/`, {
-      params: before ? { before } : {},
+      params: {
+        ...(opts?.before ? { before: opts.before } : {}),
+        ...(opts?.around ? { around: opts.around } : {}),
+      },
+    }),
+  searchMessages: (conversationId: number, q: string, opts?: { before?: number; limit?: number }) =>
+    api.get<MessageSearchResponse>(`/chat/conversations/${conversationId}/messages/search/`, {
+      params: { q, before: opts?.before, limit: opts?.limit ?? 40 },
+    }),
+  searchAllMessages: (q: string, opts?: { before?: number; limit?: number }) =>
+    api.get<MessageSearchResponse>("/chat/messages/search/", {
+      params: { q, before: opts?.before, limit: opts?.limit ?? 30 },
     }),
   sendMessage: (conversationId: number, data: FormData) =>
     api.post<Message>(`/chat/conversations/${conversationId}/send/`, data, {

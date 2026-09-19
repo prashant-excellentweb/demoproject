@@ -16,11 +16,18 @@ from apps.chat.serializers import (
     EditMessageSerializer,
     ForwardMessageSerializer,
     MessageDraftSerializer,
+    MessageSearchHitSerializer,
     MessageSerializer,
     ReactToMessageSerializer,
     SaveDraftSerializer,
     SendMessageSerializer,
     UpdateGroupSerializer,
+)
+from apps.chat.services.message_search_service import (
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+    MIN_QUERY_LENGTH,
+    MessageSearchService,
 )
 from apps.chat.services.message_service import MessageService
 from apps.common.responses import api_error, api_success
@@ -318,6 +325,13 @@ class MessageListView(APIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
             ),
+            OpenApiParameter(
+                name="around",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Center the page on this message id (search jump).",
+            ),
         ],
     )
     def get(self, request, conversation_id):
@@ -328,15 +342,26 @@ class MessageListView(APIView):
         if not ConversationRepository.user_in_conversation(conv, request.user):
             return api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
 
-        before_id = request.query_params.get("before")
-        before_id = int(before_id) if before_id else None
-        messages = MessageRepository.get_conversation_messages(
-            conv,
-            user=request.user,
-            limit=50,
-            before_id=before_id,
-        )
-        messages = list(reversed(messages))
+        around_id = request.query_params.get("around")
+        if around_id:
+            try:
+                around_id = int(around_id)
+            except (TypeError, ValueError):
+                around_id = None
+        if around_id:
+            messages = MessageRepository.get_messages_around(
+                conv, user=request.user, around_id=around_id, limit=50
+            )
+        else:
+            before_id = request.query_params.get("before")
+            before_id = int(before_id) if before_id else None
+            messages = MessageRepository.get_conversation_messages(
+                conv,
+                user=request.user,
+                limit=50,
+                before_id=before_id,
+            )
+            messages = list(reversed(messages))
         MessageRepository.mark_as_read(conv, request.user)
         return api_success(
             data=MessageSerializer(messages, many=True, context={"request": request}).data,
@@ -669,3 +694,87 @@ class MarkReadView(APIView):
             return api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
         MessageRepository.mark_as_read(conv, request.user)
         return api_success(message="Marked as read.", data=None)
+
+
+def _parse_search_params(request):
+    query = MessageSearchService.normalize_query(request.query_params.get("q"))
+    before_raw = request.query_params.get("before")
+    try:
+        before_id = int(before_raw) if before_raw else None
+    except (TypeError, ValueError):
+        before_id = None
+    try:
+        limit = int(request.query_params.get("limit") or DEFAULT_LIMIT)
+    except (TypeError, ValueError):
+        limit = DEFAULT_LIMIT
+    limit = max(1, min(limit, MAX_LIMIT))
+    return query, before_id, limit
+
+
+class InChatMessageSearchView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="Search messages in a conversation",
+        parameters=[
+            OpenApiParameter(name="q", type=str, location=OpenApiParameter.QUERY, required=True),
+            OpenApiParameter(name="before", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={200: MessageSearchHitSerializer(many=True)},
+    )
+    def get(self, request, conversation_id):
+        conv, error = _get_user_conversation(request, conversation_id)
+        if error:
+            return error
+        query, before_id, limit = _parse_search_params(request)
+        if len(query) < MIN_QUERY_LENGTH:
+            return api_success(
+                data={"query": query, "results": [], "has_more": False},
+                message="Search query too short.",
+            )
+        hits = MessageSearchService.search(
+            request.user, query, conversation=conv, before_id=before_id, limit=limit
+        )
+        return api_success(
+            data={
+                "query": query,
+                "results": MessageSearchHitSerializer(
+                    hits, many=True, context={"request": request, "query": query}
+                ).data,
+                "has_more": len(hits) == limit,
+            },
+            message="Search results fetched.",
+        )
+
+
+class GlobalMessageSearchView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="Search messages across all conversations",
+        parameters=[
+            OpenApiParameter(name="q", type=str, location=OpenApiParameter.QUERY, required=True),
+            OpenApiParameter(name="before", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={200: MessageSearchHitSerializer(many=True)},
+    )
+    def get(self, request):
+        query, before_id, limit = _parse_search_params(request)
+        if len(query) < MIN_QUERY_LENGTH:
+            return api_success(
+                data={"query": query, "results": [], "has_more": False},
+                message="Search query too short.",
+            )
+        hits = MessageSearchService.search(
+            request.user, query, before_id=before_id, limit=limit
+        )
+        return api_success(
+            data={
+                "query": query,
+                "results": MessageSearchHitSerializer(
+                    hits, many=True, context={"request": request, "query": query}
+                ).data,
+                "has_more": len(hits) == limit,
+            },
+            message="Search results fetched.",
+        )

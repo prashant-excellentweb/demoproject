@@ -9,6 +9,8 @@ from apps.chat.views import (
     DeleteMessageView,
     EditMessageView,
     ForwardMessageView,
+    GlobalMessageSearchView,
+    InChatMessageSearchView,
     MarkReadView,
     MessageDraftView,
     MessageListView,
@@ -24,6 +26,7 @@ urlpatterns = [
     path("conversations/", ConversationListView.as_view(), name="conversation-list"),
     path("conversations/direct/", CreateDirectChatView.as_view(), name="create-direct"),
     path("conversations/group/", CreateGroupView.as_view(), name="create-group"),
+    path("messages/search/", GlobalMessageSearchView.as_view(), name="global-message-search"),
     path(
         "conversations/<int:conversation_id>/favourite/",
         ToggleFavouriteView.as_view(),
@@ -51,6 +54,11 @@ urlpatterns = [
         name="remove-group-member",
     ),
     path("conversations/<int:conversation_id>/messages/", MessageListView.as_view(), name="message-list"),
+    path(
+        "conversations/<int:conversation_id>/messages/search/",
+        InChatMessageSearchView.as_view(),
+        name="in-chat-message-search",
+    ),
     path(
         "conversations/<int:conversation_id>/messages/<int:message_id>/",
         DeleteMessageView.as_view(),

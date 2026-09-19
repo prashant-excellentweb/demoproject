@@ -6,6 +6,7 @@ This app’s REST + WebSocket contract is documented for Flutter and web clients
 - **Flutter privacy (photo / about / last seen / status):** [`../backend/docs/FLUTTER_PRIVACY.md`](../backend/docs/FLUTTER_PRIVACY.md)
 - **Flutter reply / forward / draft:** [`../backend/docs/FLUTTER_REPLY_FORWARD_DRAFT.md`](../backend/docs/FLUTTER_REPLY_FORWARD_DRAFT.md)
 - **Flutter edit message:** [`../backend/docs/FLUTTER_EDIT_MESSAGE.md`](../backend/docs/FLUTTER_EDIT_MESSAGE.md)
+- **Flutter message search:** [`../backend/docs/FLUTTER_MESSAGE_SEARCH.md`](../backend/docs/FLUTTER_MESSAGE_SEARCH.md)
 - **Flutter chat + WebSocket guide:** [`../backend/docs/FLUTTER_CHAT.md`](../backend/docs/FLUTTER_CHAT.md)
 - **Swagger UI:** http://localhost:9000/api/docs/
 - **OpenAPI YAML:** [`../backend/docs/openapi.yaml`](../backend/docs/openapi.yaml)
@@ -56,6 +57,18 @@ Body: `{ "content": "updated text" }`
 Sender only, **text** messages, within 15 minutes of send. Payload includes `is_edited` and `edited_at`. Others get WebSocket `message_updated`.
 
 Walkthrough: [`FLUTTER_EDIT_MESSAGE.md`](../backend/docs/FLUTTER_EDIT_MESSAGE.md).
+
+## Message search
+
+| Action | API |
+|--------|-----|
+| In this chat | `GET /chat/conversations/{id}/messages/search/?q=` |
+| All chats | `GET /chat/messages/search/?q=` |
+| Jump to hit | `GET /chat/conversations/{id}/messages/?around={messageId}` |
+
+Min query length 2. Inbox search lists matching **chats** locally and matching **messages** from the global API.
+
+Walkthrough: [`FLUTTER_MESSAGE_SEARCH.md`](../backend/docs/FLUTTER_MESSAGE_SEARCH.md).
 
 ## Reactions
 

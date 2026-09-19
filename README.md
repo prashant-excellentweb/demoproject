@@ -14,6 +14,7 @@ A full-featured WhatsApp-like chat application with SMS OTP login, real-time mes
 - **Read Receipts** — Message delivery and read indicators
 - **Reply, Forward, Drafts** — Inline quotes, forward to other chats, per-chat unsent drafts
 - **Edit message** — Sender can edit text for 15 minutes; others see an “edited” label
+- **Message search** — Find text in the open chat or across all chats
 - **Typing Indicators** — Real-time typing notifications
 - **User Search** — Find contacts by name or phone number
 
@@ -121,6 +122,7 @@ Without Twilio credentials, OTP codes are printed to the server console.
 | Flutter privacy | `backend/docs/FLUTTER_PRIVACY.md` |
 | Flutter reply / forward / draft | `backend/docs/FLUTTER_REPLY_FORWARD_DRAFT.md` |
 | Flutter edit message | `backend/docs/FLUTTER_EDIT_MESSAGE.md` |
+| Flutter message search | `backend/docs/FLUTTER_MESSAGE_SEARCH.md` |
 | OpenAPI YAML | `backend/docs/openapi.yaml` |
 
 Regenerate schema after API changes:

@@ -78,6 +78,33 @@ export interface Message {
   created_at: string;
 }
 
+export interface ConversationSearchSummary {
+  id: number;
+  is_group: boolean;
+  group_name: string;
+  group_avatar_url?: string | null;
+  participants: User[];
+  name: string;
+}
+
+export interface MessageSearchHit {
+  id: number;
+  conversation: number;
+  sender: User;
+  message_type: MessageType;
+  content: string;
+  file_name: string;
+  snippet: string;
+  created_at: string;
+  chat: ConversationSearchSummary;
+}
+
+export interface MessageSearchResponse {
+  query: string;
+  results: MessageSearchHit[];
+  has_more: boolean;
+}
+
 export interface ForwardResult {
   forwarded: Message[];
   failed: { conversation_id: number; error: string }[];

@@ -1,5 +1,5 @@
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
-import type { Message, MessageQuote, User } from "@/types";
+import type { Conversation, Message, MessageQuote, MessageSearchHit, User } from "@/types";
 
 export function formatMessageTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -83,4 +83,18 @@ export function canEditMessage(message: Message, isSent: boolean, now = Date.now
   const created = new Date(message.created_at).getTime();
   if (Number.isNaN(created)) return false;
   return now - created < MESSAGE_EDIT_WINDOW_MS;
+}
+
+export function conversationFromSearchHit(hit: MessageSearchHit): Conversation {
+  return {
+    id: hit.chat.id,
+    participants: hit.chat.participants,
+    is_group: hit.chat.is_group,
+    group_name: hit.chat.group_name,
+    group_avatar_url: hit.chat.group_avatar_url,
+    last_message: null,
+    unread_count: 0,
+    created_at: hit.created_at,
+    updated_at: hit.created_at,
+  };
 }

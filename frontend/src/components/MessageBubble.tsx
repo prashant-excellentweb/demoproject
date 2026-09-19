@@ -15,6 +15,7 @@ interface Props {
   onReply?: (message: Message) => void;
   onForward?: (message: Message) => void;
   onEdit?: (message: Message, content: string) => Promise<void> | void;
+  highlighted?: boolean;
 }
 
 export default function MessageBubble({
@@ -27,6 +28,7 @@ export default function MessageBubble({
   onReply,
   onForward,
   onEdit,
+  highlighted = false,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [reactOpen, setReactOpen] = useState(false);
@@ -171,7 +173,10 @@ export default function MessageBubble({
   const quote = message.reply_to;
 
   return (
-    <div className={`message-row ${isSent ? "sent" : "received"}`} id={`msg-${message.id}`}>
+    <div
+      className={`message-row ${isSent ? "sent" : "received"}${highlighted ? " search-hit" : ""}`}
+      id={`msg-${message.id}`}
+    >
       <div
         className={`message-bubble ${message.is_deleted ? "deleted" : ""}`}
         onContextMenu={(e) => {

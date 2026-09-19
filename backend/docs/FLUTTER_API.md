@@ -12,6 +12,9 @@
 > **Edit message (15-minute window):**  
 > see **[`FLUTTER_EDIT_MESSAGE.md`](./FLUTTER_EDIT_MESSAGE.md)** — `PATCH …/edit/`, `is_edited`, WebSocket `message_updated`.
 
+> **Message search (in-chat & global):**  
+> see **[`FLUTTER_MESSAGE_SEARCH.md`](./FLUTTER_MESSAGE_SEARCH.md)** — `q`, `around`, snippets.
+
 ## Standard response (every API)
 
 ```json
@@ -424,6 +427,9 @@ class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
 | PATCH | `/chat/conversations/{id}/group/` | Update group name/avatar (admin only, multipart) |
 | POST | `/chat/conversations/{id}/members/{user_id}/remove/` | Remove member (admin only) |
 | GET | `/chat/conversations/{id}/messages/?before=100` | Get messages (paginated; excludes your "delete for me") |
+| GET | `/chat/conversations/{id}/messages/?around=88` | Messages centered on id 88 (search jump) |
+| GET | `/chat/conversations/{id}/messages/search/?q=` | Search in this chat (min 2 chars) |
+| GET | `/chat/messages/search/?q=` | Search messages in all your chats |
 | POST | `/chat/conversations/{id}/send/` | Send message (multipart; optional `reply_to_id`) |
 | POST | `/chat/conversations/{id}/messages/{message_id}/forward/` | Forward to other chats `{ "conversation_ids": [2,3] }` (max 10) |
 | GET | `/chat/conversations/{id}/draft/` | Get unsent draft (`null` if none) |

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Flag, MoreVertical, Paperclip, Phone, Search, Send, Video, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Flag, MoreVertical, Paperclip, Phone, Search, Send, Video, X } from "lucide-react";
 import { chatApi } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/context/WebSocketContext";
-import type { Conversation, Message, MessageQuote } from "@/types";
+import type { Conversation, Message, MessageQuote, MessageSearchHit } from "@/types";
 import Avatar from "./Avatar";
 import EmojiPicker from "./EmojiPicker";
 import ForwardPicker from "./ForwardPicker";
@@ -18,9 +18,10 @@ interface Props {
   conversation: Conversation;
   onRefreshList: () => void;
   onConversationUpdate: (conversation: Conversation) => void;
+  focusMessageId?: number | null;
 }
 
-export default function ChatWindow({ conversation, onRefreshList, onConversationUpdate }: Props) {
+export default function ChatWindow({ conversation, onRefreshList, onConversationUpdate, focusMessageId = null }: Props) {
   const { user } = useAuth();
   const { joinConversation, leaveConversation, sendTyping, markRead, onMessage, onTyping, onMessageDeleted, onMessageUpdated } = useWebSocket();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -34,6 +35,12 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchHits, setSearchHits] = useState<MessageSearchHit[]>([]);
+  const [searchIndex, setSearchIndex] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [highlightId, setHighlightId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -119,11 +126,73 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     });
   }, [conversation.id, markRead]);
 
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
+
+  const jumpToMessage = useCallback(async (messageId: number) => {
+    setHighlightId(messageId);
+    if (!messagesRef.current.some((m) => m.id === messageId)) {
+      try {
+        const res = await chatApi.getMessages(conversation.id, { around: messageId });
+        setMessages(res.data);
+        markRead(conversation.id);
+      } catch (e) {
+        console.error(e);
+        return;
+      }
+    }
+    window.setTimeout(() => {
+      document.getElementById(`msg-${messageId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 50);
+  }, [conversation.id, markRead]);
+
   useEffect(() => {
-    loadMessages();
     joinConversation(conversation.id);
+    if (!focusMessageId) {
+      loadMessages();
+    }
     return () => leaveConversation();
   }, [conversation.id, joinConversation, leaveConversation, loadMessages]);
+
+  useEffect(() => {
+    if (!focusMessageId) return;
+    jumpToMessage(focusMessageId);
+  }, [focusMessageId, conversation.id, jumpToMessage]);
+
+  useEffect(() => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchHits([]);
+    setSearchIndex(0);
+    setHighlightId(focusMessageId ?? null);
+  }, [conversation.id]);
+
+  useEffect(() => {
+    if (!searchOpen) return;
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchHits([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      chatApi
+        .searchMessages(conversation.id, q)
+        .then((res) => {
+          const hits = res.data.results || [];
+          setSearchHits(hits);
+          setSearchIndex(0);
+          if (hits[0]) jumpToMessage(hits[0].id);
+        })
+        .catch(console.error)
+        .finally(() => setSearching(false));
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery, searchOpen, conversation.id]);
 
   useEffect(() => {
     setDraftHydrated(false);
@@ -167,6 +236,13 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     }, 500);
     return () => window.clearTimeout(handle);
   }, [text, replyTo, draftHydrated, conversation.id, isBlocked]);
+
+  const goToSearchIndex = useCallback((next: number) => {
+    if (searchHits.length === 0) return;
+    const wrapped = (next + searchHits.length) % searchHits.length;
+    setSearchIndex(wrapped);
+    jumpToMessage(searchHits[wrapped].id);
+  }, [searchHits, jumpToMessage]);
 
   const handleReply = useCallback((msg: Message) => {
     setReplyTo(toMessageQuote(msg));
@@ -317,7 +393,14 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
             </p>
           )}
         </div>
-        <button type="button" className="icon-btn"><Search size={20} /></button>
+        <button
+          type="button"
+          className={`icon-btn${searchOpen ? " active" : ""}`}
+          title="Search in chat"
+          onClick={() => setSearchOpen((o) => !o)}
+        >
+          <Search size={20} />
+        </button>
         <button type="button" className="icon-btn"><Phone size={20} /></button>
         <button type="button" className="icon-btn"><Video size={20} /></button>
         <div className="chat-header-menu-wrap" ref={headerMenuRef}>
@@ -344,6 +427,59 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
           )}
         </div>
       </div>
+
+      {searchOpen && (
+        <div className="inchat-search-bar">
+          <Search size={16} />
+          <input
+            autoFocus
+            placeholder="Search in this chat"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.shiftKey) {
+                e.preventDefault();
+                goToSearchIndex(searchIndex + 1);
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                goToSearchIndex(searchIndex - 1);
+              } else if (e.key === "Escape") {
+                setSearchOpen(false);
+              }
+            }}
+          />
+          <span className="inchat-search-count">
+            {searching
+              ? "…"
+              : searchQuery.trim().length < 2
+                ? "Type 2+ letters"
+                : searchHits.length
+                  ? `${searchIndex + 1} / ${searchHits.length}`
+                  : "No matches"}
+          </span>
+          <button
+            type="button"
+            className="icon-btn"
+            title="Older match"
+            disabled={!searchHits.length}
+            onClick={() => goToSearchIndex(searchIndex + 1)}
+          >
+            <ChevronUp size={18} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            title="Newer match"
+            disabled={!searchHits.length}
+            onClick={() => goToSearchIndex(searchIndex - 1)}
+          >
+            <ChevronDown size={18} />
+          </button>
+          <button type="button" className="icon-btn" title="Close search" onClick={() => setSearchOpen(false)}>
+            <X size={18} />
+          </button>
+        </div>
+      )}
 
       {forwarding && (
         <ForwardPicker
@@ -384,6 +520,7 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
             onReply={handleReply}
             onForward={setForwarding}
             onEdit={isBlocked ? undefined : handleEditMessage}
+            highlighted={highlightId === msg.id}
           />
         ))}
         <div ref={messagesEndRef} />

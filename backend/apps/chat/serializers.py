@@ -362,3 +362,75 @@ class EditMessageSerializer(serializers.Serializer):
         if not value:
             raise serializers.ValidationError("Edited text cannot be empty.")
         return value
+
+
+class ConversationSearchSerializer(serializers.ModelSerializer):
+    """Compact chat summary attached to a search hit (avoids full inbox payload)."""
+
+    group_avatar_url = serializers.SerializerMethodField()
+    participants = UserPublicSerializer(many=True, read_only=True)
+    name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Conversation
+        fields = (
+            "id",
+            "is_group",
+            "group_name",
+            "group_avatar_url",
+            "participants",
+            "name",
+        )
+
+    def get_group_avatar_url(self, obj):
+        if obj.group_avatar:
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(obj.group_avatar.url)
+            return obj.group_avatar.url
+        return None
+
+    def get_name(self, obj):
+        if obj.is_group:
+            return obj.group_name or "Group"
+        request = self.context.get("request")
+        viewer_id = getattr(getattr(request, "user", None), "id", None)
+        for participant in obj.participants.all():
+            if participant.id != viewer_id:
+                return participant.display_name or participant.phone_number
+        return "Chat"
+
+
+class MessageSearchHitSerializer(serializers.ModelSerializer):
+    sender = UserPublicSerializer(read_only=True)
+    snippet = serializers.SerializerMethodField()
+    chat = ConversationSearchSerializer(source="conversation", read_only=True)
+
+    class Meta:
+        model = Message
+        fields = (
+            "id",
+            "conversation",
+            "sender",
+            "message_type",
+            "content",
+            "file_name",
+            "snippet",
+            "created_at",
+            "chat",
+        )
+
+    def get_snippet(self, obj):
+        query = (self.context.get("query") or "").strip()
+        text = obj.content or obj.file_name or ""
+        if not query:
+            return text[:180]
+        lower = text.lower()
+        idx = lower.find(query.lower())
+        if idx < 0:
+            return text[:180]
+        start = max(0, idx - 40)
+        end = min(len(text), idx + len(query) + 80)
+        prefix = "…" if start else ""
+        suffix = "…" if end < len(text) else ""
+        return f"{prefix}{text[start:end]}{suffix}"
