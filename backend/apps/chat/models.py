@@ -96,6 +96,11 @@ class Message(models.Model):
         blank=True,
         related_name="deleted_messages",
     )
+    edited_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Set when the sender edits content within the allowed window.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

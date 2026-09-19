@@ -352,3 +352,15 @@ class MessageRepository:
             .prefetch_related("reactions__user")
             .get(id=message.id)
         )
+
+    @staticmethod
+    def update_content(message: Message, content: str) -> Message:
+        """Persist an in-window content edit and return a serializer-ready row."""
+        message.content = content
+        message.edited_at = timezone.now()
+        message.save(update_fields=["content", "edited_at", "updated_at"])
+        return (
+            Message.objects.select_related("sender", "reply_to", "reply_to__sender")
+            .prefetch_related("reactions__user")
+            .get(id=message.id)
+        )

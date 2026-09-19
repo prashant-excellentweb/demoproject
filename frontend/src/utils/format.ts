@@ -73,3 +73,14 @@ export function toMessageQuote(message: Message): MessageQuote {
 export function getQuotePreview(quote: MessageQuote): string {
   return getMessagePreview(quote);
 }
+
+/** Matches backend MESSAGE_EDIT_WINDOW_MINUTES (default 15). */
+export const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
+
+export function canEditMessage(message: Message, isSent: boolean, now = Date.now()): boolean {
+  if (!isSent || message.is_deleted) return false;
+  if (message.message_type !== "text") return false;
+  const created = new Date(message.created_at).getTime();
+  if (Number.isNaN(created)) return false;
+  return now - created < MESSAGE_EDIT_WINDOW_MS;
+}

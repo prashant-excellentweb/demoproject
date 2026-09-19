@@ -9,6 +9,9 @@
 > **Reply, Forward & Draft:**  
 > see **[`FLUTTER_REPLY_FORWARD_DRAFT.md`](./FLUTTER_REPLY_FORWARD_DRAFT.md)** — `reply_to_id`, forward picker, draft autosave.
 
+> **Edit message (15-minute window):**  
+> see **[`FLUTTER_EDIT_MESSAGE.md`](./FLUTTER_EDIT_MESSAGE.md)** — `PATCH …/edit/`, `is_edited`, WebSocket `message_updated`.
+
 ## Standard response (every API)
 
 ```json
@@ -428,6 +431,7 @@ class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
 | DELETE | `/chat/conversations/{id}/draft/` | Clear draft |
 | DELETE | `/chat/conversations/{id}/messages/{message_id}/` | Delete for me **or** everyone |
 | POST | `/chat/conversations/{id}/messages/{message_id}/react/` | Add/toggle emoji reaction |
+| PATCH | `/chat/conversations/{id}/messages/{message_id}/edit/` | Edit own text message within 15 minutes `{ "content" }` |
 | POST | `/chat/conversations/{id}/read/` | Mark as read |
 
 ### Chat list filters & favourites
@@ -634,6 +638,17 @@ Content-Type: application/json
 ```
 
 Real-time: WebSocket event `message_updated` with the full message object.
+
+### Edit a message (15-minute window)
+
+```http
+PATCH /chat/conversations/1/messages/42/edit/
+Content-Type: application/json
+
+{ "content": "Updated text" }
+```
+
+See **[`FLUTTER_EDIT_MESSAGE.md`](./FLUTTER_EDIT_MESSAGE.md)** for models, Dio, and UI walkthrough.
 
 ### Group admin
 

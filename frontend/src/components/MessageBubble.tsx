@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, CheckCheck, CornerUpLeft, FileText, Forward, SmilePlus, Trash2 } from "lucide-react";
+import { Check, CheckCheck, CornerUpLeft, FileText, Forward, Pencil, SmilePlus, Trash2 } from "lucide-react";
 import type { Message } from "@/types";
-import { formatFileSize, formatMessageTime, getDisplayName, getQuotePreview } from "@/utils/format";
+import { canEditMessage, formatFileSize, formatMessageTime, getDisplayName, getQuotePreview, MESSAGE_EDIT_WINDOW_MS } from "@/utils/format";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "👏"];
 
@@ -14,6 +14,7 @@ interface Props {
   onReact?: (message: Message, emoji: string) => Promise<void> | void;
   onReply?: (message: Message) => void;
   onForward?: (message: Message) => void;
+  onEdit?: (message: Message, content: string) => Promise<void> | void;
 }
 
 export default function MessageBubble({
@@ -25,13 +26,30 @@ export default function MessageBubble({
   onReact,
   onReply,
   onForward,
+  onEdit,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [reactOpen, setReactOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [reacting, setReacting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(message.content);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const menuRef = useRef<HTMLDivElement>(null);
   const reactRef = useRef<HTMLDivElement>(null);
+  const editRef = useRef<HTMLTextAreaElement>(null);
+
+  const allowEdit = Boolean(onEdit) && canEditMessage(message, isSent, now);
+
+  useEffect(() => {
+    if (!allowEdit) return;
+    const remaining =
+      MESSAGE_EDIT_WINDOW_MS - (Date.now() - new Date(message.created_at).getTime());
+    if (remaining <= 0) return;
+    const timer = window.setTimeout(() => setNow(Date.now()), remaining + 50);
+    return () => window.clearTimeout(timer);
+  }, [allowEdit, message.created_at]);
 
   useEffect(() => {
     if (!menuOpen && !reactOpen) return;
@@ -68,6 +86,39 @@ export default function MessageBubble({
       await onReact(message, emoji);
     } finally {
       setReacting(false);
+    }
+  };
+
+  const startEdit = () => {
+    if (!allowEdit) return;
+    setMenuOpen(false);
+    setEditText(message.content);
+    setEditing(true);
+    window.setTimeout(() => editRef.current?.focus(), 0);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setEditText(message.content);
+  };
+
+  const saveEdit = async () => {
+    if (!onEdit || savingEdit) return;
+    const next = editText.trim();
+    if (!next) return;
+    if (next === message.content.trim()) {
+      setEditing(false);
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      await onEdit(message, next);
+      setEditing(false);
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : "Failed to edit message.");
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -155,7 +206,39 @@ export default function MessageBubble({
             </span>
           </button>
         )}
-        {renderContent()}
+        {editing ? (
+          <div className="message-edit-form">
+            <textarea
+              ref={editRef}
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              rows={3}
+              disabled={savingEdit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  saveEdit();
+                }
+                if (e.key === "Escape") cancelEdit();
+              }}
+            />
+            <div className="message-edit-actions">
+              <button type="button" onClick={cancelEdit} disabled={savingEdit}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="save"
+                onClick={saveEdit}
+                disabled={savingEdit || !editText.trim()}
+              >
+                {savingEdit ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          renderContent()
+        )}
 
         {reactions.length > 0 && !message.is_deleted && (
           <div className="message-reactions">
@@ -176,6 +259,9 @@ export default function MessageBubble({
         )}
 
         <div className="message-meta">
+          {message.is_edited && !message.is_deleted && (
+            <span className="message-edited">edited</span>
+          )}
           <span className="message-time">{formatMessageTime(message.created_at)}</span>
           {isSent && !message.is_deleted && (
             message.is_read ? <CheckCheck size={14} color="#53bdeb" /> : <Check size={14} color="#8696a0" />
@@ -188,6 +274,16 @@ export default function MessageBubble({
               onClick={() => onReply(message)}
             >
               <CornerUpLeft size={13} />
+            </button>
+          )}
+          {allowEdit && !editing && (
+            <button
+              type="button"
+              className="message-action-btn"
+              title="Edit"
+              onClick={startEdit}
+            >
+              <Pencil size={13} />
             </button>
           )}
           {!message.is_deleted && onForward && (
@@ -266,6 +362,16 @@ export default function MessageBubble({
               >
                 <Forward size={14} />
                 Forward
+              </button>
+            )}
+            {allowEdit && (
+              <button
+                type="button"
+                className="neutral"
+                onClick={startEdit}
+              >
+                <Pencil size={14} />
+                Edit
               </button>
             )}
             <button type="button" onClick={() => handleDelete("me")} disabled={deleting}>

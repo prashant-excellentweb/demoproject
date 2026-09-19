@@ -5,6 +5,7 @@ End-to-end guide to implement WhatsApp-style chat in Flutter against this backen
 Related docs:
 - Full REST reference: [`FLUTTER_API.md`](./FLUTTER_API.md)
 - Reply, forward, drafts: [`FLUTTER_REPLY_FORWARD_DRAFT.md`](./FLUTTER_REPLY_FORWARD_DRAFT.md)
+- Edit message (15 min window): [`FLUTTER_EDIT_MESSAGE.md`](./FLUTTER_EDIT_MESSAGE.md)
 - Swagger UI: `http://localhost:9000/api/docs/`
 
 ---
@@ -510,7 +511,7 @@ You must `join_conversation` before typing events work for that room.
 |--------|---------|------------------|
 | `message` | `{ "type":"message", "message": { ... } }` | Append to open chat if `message.conversation` matches; else bump chat list preview + unread |
 | `message_deleted` | `{ "type":"message_deleted", "message": { ... } }` | Replace bubble with deleted state (`is_deleted: true`) |
-| `message_updated` | `{ "type":"message_updated", "message": { ... } }` | Replace message (reactions changed) |
+| `message_updated` | `{ "type":"message_updated", "message": { ... } }` | Replace message (reactions **or** text edit) |
 | `typing` | `{ "type":"typing", "user_id", "user_name", "is_typing" }` | Print “X is typing…” (hide after ~3s) |
 | `read` | `{ "type":"read", ... }` | Optional read-receipt UI |
 
@@ -728,6 +729,7 @@ Simplest reliable approach: on any `message` / `message_deleted`, call `fetchCon
 | Delete for me | ✅ | — |
 | Delete for everyone | ✅ | ✅ `message_deleted` |
 | React | ✅ | ✅ `message_updated` |
+| Edit text (15 min) | ✅ `PATCH …/edit/` | ✅ `message_updated` |
 | Pin / archive / block / favourite | ✅ | — |
 | Report user | ✅ | — |
 | Online presence | Profile fields | Set automatically on WS connect/disconnect (`is_online`, `last_seen`) |

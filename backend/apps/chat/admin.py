@@ -29,6 +29,7 @@ class MessageAdmin(admin.ModelAdmin):
         "message_type",
         "reply_to",
         "is_forwarded",
+        "edited_at",
         "is_read",
         "is_deleted",
         "created_at",

@@ -1,6 +1,9 @@
 import logging
+from datetime import timedelta
 
+from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 
 from apps.chat.models import Conversation, Message
 from apps.chat.repositories.conversation_repository import (
@@ -14,9 +17,49 @@ logger = logging.getLogger(__name__)
 
 
 class MessageService:
-    """Business rules for replying to and forwarding messages."""
+    """Business rules for replying to, forwarding, and editing messages."""
 
     MAX_FORWARD_TARGETS = 10
+
+    @staticmethod
+    def edit_window_minutes() -> int:
+        return int(getattr(settings, "MESSAGE_EDIT_WINDOW_MINUTES", 15))
+
+    @staticmethod
+    def is_within_edit_window(message: Message) -> bool:
+        window = timedelta(minutes=MessageService.edit_window_minutes())
+        return timezone.now() <= message.created_at + window
+
+    @staticmethod
+    def edit_message(message: Message, user: User, content: str, *, is_blocked: bool = False) -> Message:
+        """
+        Sender-only text edit inside MESSAGE_EDIT_WINDOW_MINUTES.
+
+        Raises PermissionError for authz failures and ValueError for validation.
+        """
+        if is_blocked:
+            raise PermissionError("You blocked this chat. Unblock to edit messages.")
+        if message.sender_id != user.id:
+            raise PermissionError("Only the sender can edit this message.")
+        if message.is_deleted:
+            raise ValueError("Cannot edit a deleted message.")
+        if message.message_type != Message.MessageType.TEXT:
+            raise ValueError("Only text messages can be edited.")
+        if not MessageService.is_within_edit_window(message):
+            raise ValueError(
+                f"Edit window expired. Messages can be edited for "
+                f"{MessageService.edit_window_minutes()} minutes after sending."
+            )
+
+        content = (content or "").strip()
+        if not content:
+            raise ValueError("Edited text cannot be empty.")
+        if content == (message.content or "").strip():
+            return message
+
+        updated = MessageRepository.update_content(message, content)
+        logger.info("User %s edited message %s", user.id, message.id)
+        return updated
 
     @staticmethod
     def resolve_reply_target(conversation: Conversation, reply_to_id: int | None) -> Message | None:

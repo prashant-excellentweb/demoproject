@@ -13,6 +13,7 @@ from apps.chat.serializers import (
     CreateDirectChatSerializer,
     CreateGroupSerializer,
     DeleteMessageSerializer,
+    EditMessageSerializer,
     ForwardMessageSerializer,
     MessageDraftSerializer,
     MessageSerializer,
@@ -607,6 +608,53 @@ class ReactToMessageView(APIView):
         return api_success(
             data=MessageSerializer(message, context={"request": request}).data,
             message="Reaction updated.",
+        )
+
+
+class EditMessageView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="Edit a text message within the time window",
+        description=(
+            "Only the sender can edit, and only text messages within "
+            "`MESSAGE_EDIT_WINDOW_MINUTES` (default 15) of `created_at`. "
+            "Broadcasts `message_updated` over WebSocket."
+        ),
+        request=EditMessageSerializer,
+        responses={200: MessageSerializer},
+    )
+    def patch(self, request, conversation_id, message_id):
+        conv, error = _get_user_conversation(request, conversation_id)
+        if error:
+            return error
+
+        try:
+            message = Message.objects.select_related("sender", "reply_to", "reply_to__sender").get(
+                id=message_id,
+                conversation=conv,
+            )
+        except Message.DoesNotExist:
+            return api_error(message="Message not found.", status_code=status.HTTP_404_NOT_FOUND)
+
+        serializer = EditMessageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            message = MessageService.edit_message(
+                message,
+                request.user,
+                serializer.validated_data["content"],
+                is_blocked=ConversationRepository.is_blocked_by(conv, request.user),
+            )
+        except PermissionError as exc:
+            return api_error(message=str(exc), status_code=status.HTTP_403_FORBIDDEN)
+        except ValueError as exc:
+            return api_error(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+
+        broadcast_message_updated(message, request)
+        return api_success(
+            data=MessageSerializer(message, context={"request": request}).data,
+            message="Message edited.",
         )
 
 

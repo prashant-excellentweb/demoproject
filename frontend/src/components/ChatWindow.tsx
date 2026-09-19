@@ -67,6 +67,12 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     replaceMessage(res.data);
   }, [conversation.id, replaceMessage]);
 
+  const handleEditMessage = useCallback(async (msg: Message, content: string) => {
+    const res = await chatApi.editMessage(conversation.id, msg.id, content);
+    replaceMessage(res.data);
+    onRefreshList();
+  }, [conversation.id, replaceMessage, onRefreshList]);
+
   const canDeleteForEveryone = useCallback((msg: Message) => {
     if (msg.is_deleted) return false;
     if (msg.sender.id === user!.id) return true;
@@ -377,6 +383,7 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
             onReact={handleReactToMessage}
             onReply={handleReply}
             onForward={setForwarding}
+            onEdit={isBlocked ? undefined : handleEditMessage}
           />
         ))}
         <div ref={messagesEndRef} />

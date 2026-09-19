@@ -138,6 +138,8 @@ TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "")
 
 OTP_EXPIRY_MINUTES = 5
 STORY_EXPIRY_HOURS = 24
+# How long the sender may edit a text message after sending (WhatsApp-style).
+MESSAGE_EDIT_WINDOW_MINUTES = 15
 
 # Static OTP for dev/testing. Set STATIC_OTP= to empty string to use random OTP + Twilio.
 STATIC_OTP = os.getenv("STATIC_OTP", "111111")
@@ -192,6 +194,11 @@ Validation errors put field errors inside `data`.
 ## Reactions
 - `POST /api/chat/conversations/{id}/messages/{message_id}/react/`
 - Body: `{ "emoji": "👍" }` — allowed: 👍 ❤️ 😂 😮 😢 🙏 🔥 👏
+
+## Edit message
+- `PATCH /api/chat/conversations/{id}/messages/{message_id}/edit/`
+- Body: `{ "content": "updated text" }`
+- Sender only, text messages, within 15 minutes of send. Broadcasts `message_updated`.
 
 ## Media uploads
 Use `multipart/form-data` for messages, profile avatar, and status media.

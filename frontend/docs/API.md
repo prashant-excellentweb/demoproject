@@ -5,6 +5,7 @@ This app’s REST + WebSocket contract is documented for Flutter and web clients
 - **Flutter guide (payloads, examples):** [`../backend/docs/FLUTTER_API.md`](../backend/docs/FLUTTER_API.md)
 - **Flutter privacy (photo / about / last seen / status):** [`../backend/docs/FLUTTER_PRIVACY.md`](../backend/docs/FLUTTER_PRIVACY.md)
 - **Flutter reply / forward / draft:** [`../backend/docs/FLUTTER_REPLY_FORWARD_DRAFT.md`](../backend/docs/FLUTTER_REPLY_FORWARD_DRAFT.md)
+- **Flutter edit message:** [`../backend/docs/FLUTTER_EDIT_MESSAGE.md`](../backend/docs/FLUTTER_EDIT_MESSAGE.md)
 - **Flutter chat + WebSocket guide:** [`../backend/docs/FLUTTER_CHAT.md`](../backend/docs/FLUTTER_CHAT.md)
 - **Swagger UI:** http://localhost:9000/api/docs/
 - **OpenAPI YAML:** [`../backend/docs/openapi.yaml`](../backend/docs/openapi.yaml)
@@ -46,6 +47,15 @@ Full Flutter walkthrough: [`FLUTTER_REPLY_FORWARD_DRAFT.md`](../backend/docs/FLU
 
 - **Delete for me:** any chat participant  
 - **Delete for everyone:** message sender, or group admin  
+
+## Edit message (15-minute window)
+
+`PATCH /chat/conversations/{id}/messages/{messageId}/edit/`  
+Body: `{ "content": "updated text" }`  
+
+Sender only, **text** messages, within 15 minutes of send. Payload includes `is_edited` and `edited_at`. Others get WebSocket `message_updated`.
+
+Walkthrough: [`FLUTTER_EDIT_MESSAGE.md`](../backend/docs/FLUTTER_EDIT_MESSAGE.md).
 
 ## Reactions
 

@@ -68,6 +68,8 @@ export interface Message {
   reply_to?: MessageQuote | null;
   is_forwarded?: boolean;
   forwarded_from?: number | null;
+  is_edited?: boolean;
+  edited_at?: string | null;
   is_read: boolean;
   is_deleted?: boolean;
   deleted_at?: string | null;

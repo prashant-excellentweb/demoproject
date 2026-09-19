@@ -43,6 +43,7 @@ class MessageSerializer(serializers.ModelSerializer):
     reactions = serializers.SerializerMethodField()
     my_reaction = serializers.SerializerMethodField()
     reply_to = MessageQuoteSerializer(read_only=True)
+    is_edited = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -62,6 +63,8 @@ class MessageSerializer(serializers.ModelSerializer):
             "is_read",
             "is_deleted",
             "deleted_at",
+            "is_edited",
+            "edited_at",
             "reactions",
             "my_reaction",
             "created_at",
@@ -75,6 +78,8 @@ class MessageSerializer(serializers.ModelSerializer):
             "is_read",
             "is_deleted",
             "deleted_at",
+            "is_edited",
+            "edited_at",
             "created_at",
             "file_size",
         )
@@ -110,6 +115,9 @@ class MessageSerializer(serializers.ModelSerializer):
             if reaction.user_id == request.user.id:
                 return reaction.emoji
         return None
+
+    def get_is_edited(self, obj):
+        return obj.edited_at is not None
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -341,3 +349,16 @@ class SendMessageSerializer(serializers.Serializer):
         if msg_type != Message.MessageType.TEXT and not file:
             raise serializers.ValidationError("Media messages require a file.")
         return data
+
+
+class EditMessageSerializer(serializers.Serializer):
+    content = serializers.CharField(
+        max_length=10000,
+        help_text="Replacement text. Empty is rejected for text messages.",
+    )
+
+    def validate_content(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Edited text cannot be empty.")
+        return value

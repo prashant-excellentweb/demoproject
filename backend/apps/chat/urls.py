@@ -7,6 +7,7 @@ from apps.chat.views import (
     CreateDirectChatView,
     CreateGroupView,
     DeleteMessageView,
+    EditMessageView,
     ForwardMessageView,
     MarkReadView,
     MessageDraftView,
@@ -64,6 +65,11 @@ urlpatterns = [
         "conversations/<int:conversation_id>/messages/<int:message_id>/forward/",
         ForwardMessageView.as_view(),
         name="forward-message",
+    ),
+    path(
+        "conversations/<int:conversation_id>/messages/<int:message_id>/edit/",
+        EditMessageView.as_view(),
+        name="edit-message",
     ),
     path(
         "conversations/<int:conversation_id>/draft/",

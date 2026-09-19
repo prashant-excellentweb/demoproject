@@ -132,6 +132,8 @@ export const chatApi = {
     }),
   reactToMessage: (conversationId: number, messageId: number, emoji: string) =>
     api.post<Message>(`/chat/conversations/${conversationId}/messages/${messageId}/react/`, { emoji }),
+  editMessage: (conversationId: number, messageId: number, content: string) =>
+    api.patch<Message>(`/chat/conversations/${conversationId}/messages/${messageId}/edit/`, { content }),
   forwardMessage: (conversationId: number, messageId: number, conversationIds: number[]) =>
     api.post<ForwardResult>(
       `/chat/conversations/${conversationId}/messages/${messageId}/forward/`,
