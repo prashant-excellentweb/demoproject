@@ -445,6 +445,46 @@ a {
   font-size: 14px;
 }
 
+.admins-only-banner {
+  padding: 10px 16px;
+  background: rgba(18, 140, 126, 0.1);
+  color: var(--wa-text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.composer-error {
+  margin: 8px 16px 0;
+  color: #9b1c1c;
+  font-size: 13px;
+}
+
+.mention-picker {
+  margin: 8px 16px 0;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--wa-panel);
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.14);
+}
+
+.mention-picker-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+  color: var(--wa-text);
+  cursor: pointer;
+}
+
+.mention-picker-item.active,
+.mention-picker-item:hover {
+  background: rgba(18, 140, 126, 0.1);
+}
+
 /* Status bar */
 .status-bar {
   display: flex;
@@ -750,6 +790,15 @@ a {
 .message-row.sent .message-bubble {
   background: var(--wa-bubble-out);
   border-top-right-radius: 0;
+}
+
+.message-row.mentioned-me .message-bubble {
+  box-shadow: inset 3px 0 0 #027eb5;
+}
+
+.mention-token {
+  color: #027eb5;
+  font-weight: 600;
 }
 
 .message-forwarded-label {
@@ -1100,6 +1149,11 @@ a {
 
 .forward-option.selected {
   background: rgba(18, 140, 126, 0.08);
+}
+
+.forward-option.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .message-input-area {
@@ -1551,6 +1605,42 @@ a {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.group-setting-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--wa-text-secondary);
+}
+
+.group-setting-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px 8px;
+  border-top: 1px solid var(--wa-border);
+  cursor: pointer;
+}
+
+.group-setting-toggle span {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.group-setting-toggle strong {
+  font-size: 14px;
+}
+
+.group-setting-toggle small {
+  color: var(--wa-text-secondary);
+  font-size: 12px;
+}
+
+.group-setting-toggle input {
+  margin-top: 4px;
 }
 
 .group-info-actions {

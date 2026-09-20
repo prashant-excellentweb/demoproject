@@ -7,6 +7,7 @@ Related docs:
 - Reply, forward, drafts: [`FLUTTER_REPLY_FORWARD_DRAFT.md`](./FLUTTER_REPLY_FORWARD_DRAFT.md)
 - Edit message (15 min window): [`FLUTTER_EDIT_MESSAGE.md`](./FLUTTER_EDIT_MESSAGE.md)
 - Message search: [`FLUTTER_MESSAGE_SEARCH.md`](./FLUTTER_MESSAGE_SEARCH.md)
+- Group mentions + admins-only: [`FLUTTER_GROUP_MENTIONS_ADMINS.md`](./FLUTTER_GROUP_MENTIONS_ADMINS.md)
 - Swagger UI: `http://localhost:9000/api/docs/`
 
 ---
@@ -732,6 +733,8 @@ Simplest reliable approach: on any `message` / `message_deleted`, call `fetchCon
 | React | ✅ | ✅ `message_updated` |
 | Edit text (15 min) | ✅ `PATCH …/edit/` | ✅ `message_updated` |
 | Search messages | ✅ in-chat + global | — |
+| Group @mentions | ✅ send fields | ✅ `message` includes `mentions` |
+| Admins-only messaging | ✅ `PATCH …/group/` | — |
 | Pin / archive / block / favourite | ✅ | — |
 | Report user | ✅ | — |
 | Online presence | Profile fields | Set automatically on WS connect/disconnect (`is_online`, `last_seen`) |
@@ -864,4 +867,5 @@ Dev OTP (if enabled on server): `111111`
 ---
 
 For auth, profile, stories, and full endpoint tables, see [`FLUTTER_API.md`](./FLUTTER_API.md).  
-For **inline reply, forward, and drafts**, see [`FLUTTER_REPLY_FORWARD_DRAFT.md`](./FLUTTER_REPLY_FORWARD_DRAFT.md).
+For **inline reply, forward, and drafts**, see [`FLUTTER_REPLY_FORWARD_DRAFT.md`](./FLUTTER_REPLY_FORWARD_DRAFT.md).  
+For **group @mentions and admins-only messaging**, see [`FLUTTER_GROUP_MENTIONS_ADMINS.md`](./FLUTTER_GROUP_MENTIONS_ADMINS.md).

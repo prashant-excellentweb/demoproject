@@ -83,7 +83,7 @@ class ConversationRepository:
                     queryset=Message.objects.select_related(
                         "sender", "reply_to", "reply_to__sender"
                     )
-                    .prefetch_related("reactions__user")
+                    .prefetch_related("reactions__user", "mention_links__user")
                     .exclude(hidden_for__user=user)
                     .order_by("-created_at")[:1],
                     to_attr="latest_messages",
@@ -283,7 +283,7 @@ class MessageRepository:
             Message.objects.filter(conversation=conversation)
             .exclude(hidden_for__user=user)
             .select_related("sender", "reply_to", "reply_to__sender")
-            .prefetch_related("reactions__user")
+            .prefetch_related("reactions__user", "mention_links__user")
         )
         if before_id:
             qs = qs.filter(id__lt=before_id)
@@ -304,7 +304,7 @@ class MessageRepository:
         try:
             target = (
                 visible.select_related("sender", "reply_to", "reply_to__sender")
-                .prefetch_related("reactions__user")
+                .prefetch_related("reactions__user", "mention_links__user")
                 .get(id=around_id)
             )
         except Message.DoesNotExist:
@@ -317,7 +317,7 @@ class MessageRepository:
                 | Q(created_at=target.created_at, id__lt=target.id)
             )
             .select_related("sender", "reply_to", "reply_to__sender")
-            .prefetch_related("reactions__user")
+            .prefetch_related("reactions__user", "mention_links__user")
             .order_by("-created_at", "-id")[:half]
         )
         newer = list(
@@ -326,7 +326,7 @@ class MessageRepository:
                 | Q(created_at=target.created_at, id__gt=target.id)
             )
             .select_related("sender", "reply_to", "reply_to__sender")
-            .prefetch_related("reactions__user")
+            .prefetch_related("reactions__user", "mention_links__user")
             .order_by("created_at", "id")[:half]
         )
         return list(reversed(older)) + [target] + newer
@@ -446,7 +446,7 @@ class MessageRepository:
             MessageReaction.objects.create(message=message, user=user, emoji=emoji)
         return (
             Message.objects.select_related("sender", "reply_to", "reply_to__sender")
-            .prefetch_related("reactions__user")
+            .prefetch_related("reactions__user", "mention_links__user")
             .get(id=message.id)
         )
 
@@ -458,6 +458,6 @@ class MessageRepository:
         message.save(update_fields=["content", "edited_at", "updated_at"])
         return (
             Message.objects.select_related("sender", "reply_to", "reply_to__sender")
-            .prefetch_related("reactions__user")
+            .prefetch_related("reactions__user", "mention_links__user")
             .get(id=message.id)
         )

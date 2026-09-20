@@ -7,6 +7,7 @@ This app’s REST + WebSocket contract is documented for Flutter and web clients
 - **Flutter reply / forward / draft:** [`../backend/docs/FLUTTER_REPLY_FORWARD_DRAFT.md`](../backend/docs/FLUTTER_REPLY_FORWARD_DRAFT.md)
 - **Flutter edit message:** [`../backend/docs/FLUTTER_EDIT_MESSAGE.md`](../backend/docs/FLUTTER_EDIT_MESSAGE.md)
 - **Flutter message search:** [`../backend/docs/FLUTTER_MESSAGE_SEARCH.md`](../backend/docs/FLUTTER_MESSAGE_SEARCH.md)
+- **Flutter group mentions + admins-only:** [`../backend/docs/FLUTTER_GROUP_MENTIONS_ADMINS.md`](../backend/docs/FLUTTER_GROUP_MENTIONS_ADMINS.md)
 - **Flutter chat + WebSocket guide:** [`../backend/docs/FLUTTER_CHAT.md`](../backend/docs/FLUTTER_CHAT.md)
 - **Swagger UI:** http://localhost:9000/api/docs/
 - **OpenAPI YAML:** [`../backend/docs/openapi.yaml`](../backend/docs/openapi.yaml)
@@ -69,6 +70,17 @@ Walkthrough: [`FLUTTER_EDIT_MESSAGE.md`](../backend/docs/FLUTTER_EDIT_MESSAGE.md
 Min query length 2. Inbox search lists matching **chats** locally and matching **messages** from the global API.
 
 Walkthrough: [`FLUTTER_MESSAGE_SEARCH.md`](../backend/docs/FLUTTER_MESSAGE_SEARCH.md).
+
+## Group mentions & admins-only messaging
+
+| Action | API |
+|--------|-----|
+| Mention members | `POST /chat/conversations/{id}/send/` with `mentioned_user_ids` and/or `mention_everyone` |
+| Only admins can send | `PATCH /chat/conversations/{id}/group/` with `admins_only_messages` (admin only) |
+
+Conversation includes `admins_only_messages` and `is_admin`. Messages include `mentions`, `mention_everyone`, `mentioned_me`. Mentions are ignored in 1:1. Non-admins get 403 on send/forward while admins-only is on.
+
+Walkthrough: [`FLUTTER_GROUP_MENTIONS_ADMINS.md`](../backend/docs/FLUTTER_GROUP_MENTIONS_ADMINS.md).
 
 ## Reactions
 

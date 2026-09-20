@@ -29,6 +29,7 @@ from apps.chat.services.message_search_service import (
     MIN_QUERY_LENGTH,
     MessageSearchService,
 )
+from apps.chat.services.mention_service import MentionService
 from apps.chat.services.message_service import MessageService
 from apps.common.responses import api_error, api_success
 from apps.users.models import User
@@ -266,7 +267,7 @@ class CreateGroupView(APIView):
 class UpdateGroupView(APIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
-    @extend_schema(tags=["Chat"], summary="Update group name or avatar (admin only)", request=UpdateGroupSerializer)
+    @extend_schema(tags=["Chat"], summary="Update group name, avatar, or admins-only messaging (admin only)", request=UpdateGroupSerializer)
     def patch(self, request, conversation_id):
         conv, error = _get_group_conversation(request, conversation_id)
         if error:
@@ -385,6 +386,10 @@ class SendMessageView(APIView):
                 message="You blocked this chat. Unblock to send messages.",
                 status_code=status.HTTP_403_FORBIDDEN,
             )
+        try:
+            MentionService.assert_can_post(conv, request.user)
+        except PermissionError as exc:
+            return api_error(message=str(exc), status_code=status.HTTP_403_FORBIDDEN)
 
         serializer = SendMessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -409,6 +414,15 @@ class SendMessageView(APIView):
             file_name=file.name if file else "",
             reply_to=reply_to,
         )
+        mentioned_users, mention_everyone = MentionService.resolve(
+            conv,
+            request.user,
+            mentioned_user_ids=MentionService.parse_id_list(data.get("mentioned_user_ids")),
+            mention_everyone=bool(data.get("mention_everyone")),
+            content=data.get("content", ""),
+        )
+        if mentioned_users or mention_everyone:
+            message = MentionService.attach(message, mentioned_users, mention_everyone)
         # The draft that produced this message is no longer needed.
         MessageService.clear_draft_after_send(conv, request.user)
         broadcast_new_message(message, request)

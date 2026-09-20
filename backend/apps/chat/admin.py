@@ -8,6 +8,7 @@ from apps.chat.models import (
     ConversationPin,
     Message,
     MessageDraft,
+    MessageMention,
     MessageHidden,
     MessageReaction,
     MessageStatus,
@@ -16,7 +17,7 @@ from apps.chat.models import (
 
 @admin.register(Conversation)
 class ConversationAdmin(admin.ModelAdmin):
-    list_display = ("id", "is_group", "group_name", "created_by", "updated_at")
+    list_display = ("id", "is_group", "group_name", "created_by", "admins_only_messages", "updated_at")
     filter_horizontal = ("participants",)
 
 
@@ -35,6 +36,12 @@ class MessageAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("message_type", "is_forwarded", "is_read", "is_deleted")
+
+
+@admin.register(MessageMention)
+class MessageMentionAdmin(admin.ModelAdmin):
+    list_display = ("id", "message", "user", "created_at")
+    search_fields = ("user__display_name", "user__phone_number")
 
 
 @admin.register(MessageDraft)

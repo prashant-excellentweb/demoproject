@@ -15,6 +15,9 @@
 > **Message search (in-chat & global):**  
 > see **[`FLUTTER_MESSAGE_SEARCH.md`](./FLUTTER_MESSAGE_SEARCH.md)** — `q`, `around`, snippets.
 
+> **Group mentions + admins-only messaging:**  
+> see **[`FLUTTER_GROUP_MENTIONS_ADMINS.md`](./FLUTTER_GROUP_MENTIONS_ADMINS.md)** — `@name`, `@everyone`, `admins_only_messages`.
+
 ## Standard response (every API)
 
 ```json
@@ -424,13 +427,13 @@ class _PrivacySettingsPageState extends State<PrivacySettingsPage> {
 | POST | `/chat/conversations/{id}/pin/` | Pin/unpin `{ "action": "pin" \| "unpin" }` |
 | POST | `/chat/conversations/direct/` | Start 1:1 chat `{ "user_id": 2 }` |
 | POST | `/chat/conversations/group/` | Create group `{ "group_name": "Family", "participant_ids": [2,3] }` |
-| PATCH | `/chat/conversations/{id}/group/` | Update group name/avatar (admin only, multipart) |
+| PATCH | `/chat/conversations/{id}/group/` | Update group name/avatar/`admins_only_messages` (admin only) |
 | POST | `/chat/conversations/{id}/members/{user_id}/remove/` | Remove member (admin only) |
 | GET | `/chat/conversations/{id}/messages/?before=100` | Get messages (paginated; excludes your "delete for me") |
 | GET | `/chat/conversations/{id}/messages/?around=88` | Messages centered on id 88 (search jump) |
 | GET | `/chat/conversations/{id}/messages/search/?q=` | Search in this chat (min 2 chars) |
 | GET | `/chat/messages/search/?q=` | Search messages in all your chats |
-| POST | `/chat/conversations/{id}/send/` | Send message (multipart; optional `reply_to_id`) |
+| POST | `/chat/conversations/{id}/send/` | Send message (multipart; optional `reply_to_id`, `mentioned_user_ids`, `mention_everyone`) |
 | POST | `/chat/conversations/{id}/messages/{message_id}/forward/` | Forward to other chats `{ "conversation_ids": [2,3] }` (max 10) |
 | GET | `/chat/conversations/{id}/draft/` | Get unsent draft (`null` if none) |
 | PUT | `/chat/conversations/{id}/draft/` | Save draft `{ "content", "reply_to_id"? }` — blank content clears |
@@ -544,6 +547,20 @@ Content-Type: multipart/form-data
 content=Hello
 message_type=text
 ```
+
+Group mentions (optional; ignored in 1:1):
+
+```http
+POST /chat/conversations/3/send/
+Content-Type: multipart/form-data
+
+content=Hey @Priya
+message_type=text
+mentioned_user_ids=2
+mention_everyone=false
+```
+
+See **[`FLUTTER_GROUP_MENTIONS_ADMINS.md`](./FLUTTER_GROUP_MENTIONS_ADMINS.md)**.
 
 ### Send image / video / PDF
 ```http
@@ -666,7 +683,10 @@ Content-Type: multipart/form-data
 
 group_name=Family Chat
 group_avatar=<optional file>
+admins_only_messages=true
 ```
+
+JSON also works: `{ "admins_only_messages": true }`. Non-admins receive **403** on send/forward while this is on. See **[`FLUTTER_GROUP_MENTIONS_ADMINS.md`](./FLUTTER_GROUP_MENTIONS_ADMINS.md)**.
 
 ```http
 POST /chat/conversations/1/members/5/remove/

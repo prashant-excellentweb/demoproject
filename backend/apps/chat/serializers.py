@@ -44,6 +44,8 @@ class MessageSerializer(serializers.ModelSerializer):
     my_reaction = serializers.SerializerMethodField()
     reply_to = MessageQuoteSerializer(read_only=True)
     is_edited = serializers.SerializerMethodField()
+    mentions = serializers.SerializerMethodField()
+    mentioned_me = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -60,6 +62,9 @@ class MessageSerializer(serializers.ModelSerializer):
             "reply_to",
             "is_forwarded",
             "forwarded_from",
+            "mention_everyone",
+            "mentions",
+            "mentioned_me",
             "is_read",
             "is_deleted",
             "deleted_at",
@@ -75,6 +80,9 @@ class MessageSerializer(serializers.ModelSerializer):
             "reply_to",
             "is_forwarded",
             "forwarded_from",
+            "mention_everyone",
+            "mentions",
+            "mentioned_me",
             "is_read",
             "is_deleted",
             "deleted_at",
@@ -119,6 +127,33 @@ class MessageSerializer(serializers.ModelSerializer):
     def get_is_edited(self, obj):
         return obj.edited_at is not None
 
+    def get_mentions(self, obj):
+        if obj.is_deleted:
+            return []
+        links = getattr(obj, "mention_links", None)
+        users = [link.user for link in links.all()] if links is not None else []
+        return [
+            {
+                "id": user.id,
+                "display_name": user.display_name or user.phone_number,
+            }
+            for user in users
+        ]
+
+    def get_mentioned_me(self, obj):
+        if obj.is_deleted:
+            return False
+        request = self.context.get("request")
+        viewer = getattr(request, "user", None) if request else None
+        if not viewer or not getattr(viewer, "is_authenticated", False):
+            return False
+        if obj.mention_everyone:
+            return viewer.id != obj.sender_id
+        links = getattr(obj, "mention_links", None)
+        if links is None:
+            return False
+        return any(link.user_id == viewer.id for link in links.all())
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         if instance.is_deleted:
@@ -130,6 +165,9 @@ class MessageSerializer(serializers.ModelSerializer):
             data["reactions"] = []
             data["my_reaction"] = None
             data["reply_to"] = None
+            data["mentions"] = []
+            data["mentioned_me"] = False
+            data["mention_everyone"] = False
         return data
 
 
@@ -188,6 +226,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             "is_archived",
             "is_blocked",
             "is_pinned",
+            "admins_only_messages",
             "draft",
             "last_message",
             "unread_count",
@@ -292,7 +331,7 @@ class CreateGroupSerializer(serializers.Serializer):
 class UpdateGroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
-        fields = ("group_name", "group_avatar")
+        fields = ("group_name", "group_avatar", "admins_only_messages")
 
     def validate_group_name(self, value):
         value = (value or "").strip()
@@ -339,6 +378,13 @@ class SendMessageSerializer(serializers.Serializer):
         allow_null=True,
         help_text="ID of the message being quoted (inline reply).",
     )
+    mentioned_user_ids = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        help_text="Comma-separated or JSON list of mentioned user IDs (groups).",
+    )
+    mention_everyone = serializers.BooleanField(required=False, default=False)
 
     def validate(self, data):
         msg_type = data.get("message_type", Message.MessageType.TEXT)

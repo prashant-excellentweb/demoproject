@@ -11,6 +11,7 @@ from apps.chat.repositories.conversation_repository import (
     MessageRepository,
 )
 from apps.chat.repositories.draft_repository import DraftRepository
+from apps.chat.services.mention_service import MentionService
 from apps.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -94,7 +95,9 @@ class MessageService:
         # Single query for all targets, with participation resolved up front (no N+1).
         allowed = {
             conv.id: conv
-            for conv in Conversation.objects.filter(id__in=targets, participants=sender)
+            for conv in Conversation.objects.filter(id__in=targets, participants=sender).select_related(
+                "created_by"
+            )
         }
         blocked_ids = set(
             Conversation.objects.filter(id__in=targets, blocked_by__user=sender).values_list(
@@ -117,6 +120,11 @@ class MessageService:
                 failures.append(
                     {"conversation_id": conversation_id, "error": "You blocked this chat."}
                 )
+                continue
+            try:
+                MentionService.assert_can_post(conversation, sender)
+            except PermissionError as exc:
+                failures.append({"conversation_id": conversation_id, "error": str(exc)})
                 continue
 
             copy = MessageRepository.create_message(

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Ban, Camera, Flag, ShieldOff, UserMinus, X } from "lucide-react";
+import { Ban, Camera, Flag, Lock, ShieldOff, UserMinus, X } from "lucide-react";
 import { chatApi } from "@/api/client";
 import type { Conversation } from "@/types";
 import Avatar from "./Avatar";
@@ -31,6 +31,8 @@ export default function GroupInfoPanel({
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [reportingId, setReportingId] = useState<number | null>(null);
   const [blocking, setBlocking] = useState(false);
+  const [adminsOnly, setAdminsOnly] = useState(conversation.admins_only_messages === true);
+  const [savingAdminsOnly, setSavingAdminsOnly] = useState(false);
   const [error, setError] = useState("");
   const avatarRef = useRef<HTMLInputElement>(null);
   const isBlocked = conversation.is_blocked === true;
@@ -94,6 +96,25 @@ export default function GroupInfoPanel({
       await reportUser(member, conversation.id);
     } finally {
       setReportingId(null);
+    }
+  };
+
+  const handleToggleAdminsOnly = async () => {
+    const next = !adminsOnly;
+    setSavingAdminsOnly(true);
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("admins_only_messages", next ? "true" : "false");
+      const res = await chatApi.updateGroup(conversation.id, form);
+      setAdminsOnly(res.data.admins_only_messages === true);
+      setMembers(res.data.participants);
+      onUpdated(res.data);
+      onRefreshList();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update messaging mode.");
+    } finally {
+      setSavingAdminsOnly(false);
     }
   };
 
@@ -177,7 +198,26 @@ export default function GroupInfoPanel({
           )}
 
           <p>{members.length} participants{isAdmin ? " · You are admin" : ""}</p>
+          {adminsOnly && (
+            <p className="group-setting-note">Only admins can send messages</p>
+          )}
         </div>
+
+        {isAdmin && (
+          <label className="group-setting-toggle">
+            <Lock size={18} />
+            <span>
+              <strong>Only admins can send messages</strong>
+              <small>Members can still read, react, and search.</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={adminsOnly}
+              disabled={savingAdminsOnly}
+              onChange={handleToggleAdminsOnly}
+            />
+          </label>
+        )}
 
         <div className="group-members-list">
           <h4>Participants</h4>

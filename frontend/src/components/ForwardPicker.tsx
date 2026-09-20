@@ -6,6 +6,7 @@ import type { Conversation, Message } from "@/types";
 import Avatar from "./Avatar";
 import GroupAvatar from "./GroupAvatar";
 import { getDisplayName, getOtherParticipant } from "@/utils/format";
+import { isGroupAdmin } from "@/utils/group";
 
 const MAX_TARGETS = 10;
 
@@ -50,7 +51,12 @@ export default function ForwardPicker({
     };
   }, [sourceConversationId]);
 
+  const cannotPost = (c: Conversation) =>
+    Boolean(user && c.is_group && c.admins_only_messages && !isGroupAdmin(c, user.id));
+
   const toggle = (id: number) => {
+    const chat = chats.find((c) => c.id === id);
+    if (chat && cannotPost(chat) && !selected.includes(id)) return;
     setSelected((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
       if (prev.length >= MAX_TARGETS) return prev;
@@ -112,13 +118,17 @@ export default function ForwardPicker({
           )}
           {chats.map((c) => {
             const checked = selected.includes(c.id);
+            const locked = cannotPost(c);
             const other = user && !c.is_group ? getOtherParticipant(c, user.id) : undefined;
             return (
-              <label key={c.id} className={`user-result forward-option ${checked ? "selected" : ""}`}>
+              <label
+                key={c.id}
+                className={`user-result forward-option ${checked ? "selected" : ""}${locked ? " disabled" : ""}`}
+              >
                 <input
                   type="checkbox"
                   checked={checked}
-                  disabled={!checked && selected.length >= MAX_TARGETS}
+                  disabled={locked || (!checked && selected.length >= MAX_TARGETS)}
                   onChange={() => toggle(c.id)}
                 />
                 {c.is_group || !other ? (
@@ -129,7 +139,11 @@ export default function ForwardPicker({
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 500 }}>{chatLabel(c)}</div>
                   <div style={{ fontSize: 13, color: "var(--wa-text-secondary)" }}>
-                    {c.is_group ? `${c.participants.length} participants` : other?.phone_number}
+                    {locked
+                      ? "Only admins can send messages"
+                      : c.is_group
+                        ? `${c.participants.length} participants`
+                        : other?.phone_number}
                   </div>
                 </div>
               </label>

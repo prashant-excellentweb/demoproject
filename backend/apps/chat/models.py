@@ -17,6 +17,10 @@ class Conversation(models.Model):
         blank=True,
         related_name="created_groups",
     )
+    admins_only_messages = models.BooleanField(
+        default=False,
+        help_text="When True, only group admins can send messages.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -86,6 +90,13 @@ class Message(models.Model):
         help_text="Original message this one was forwarded from.",
     )
     is_forwarded = models.BooleanField(default=False)
+    mention_everyone = models.BooleanField(default=False)
+    mentioned_users = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        through="MessageMention",
+        related_name="mentioned_in_messages",
+        blank=True,
+    )
     is_read = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
@@ -149,6 +160,30 @@ class MessageReaction(models.Model):
 
     def __str__(self):
         return f"{self.user_id} {self.emoji} on message {self.message_id}"
+
+
+class MessageMention(models.Model):
+    """A group member tagged with @name in a message."""
+
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="mention_links")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="message_mentions",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("message", "user"), name="chat_mention_message_user_uniq"),
+        ]
+        indexes = [
+            models.Index(fields=["user", "-created_at"], name="chat_mention_user_created"),
+            models.Index(fields=["message"], name="chat_mention_msg_idx"),
+        ]
+
+    def __str__(self):
+        return f"@{self.user_id} in message {self.message_id}"
 
 
 class MessageHidden(models.Model):

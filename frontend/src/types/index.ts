@@ -70,6 +70,9 @@ export interface Message {
   forwarded_from?: number | null;
   is_edited?: boolean;
   edited_at?: string | null;
+  mention_everyone?: boolean;
+  mentions?: { id: number; display_name: string }[];
+  mentioned_me?: boolean;
   is_read: boolean;
   is_deleted?: boolean;
   deleted_at?: string | null;
@@ -122,6 +125,8 @@ export interface Conversation {
   is_archived?: boolean;
   is_blocked?: boolean;
   is_pinned?: boolean;
+  /** When true, only group admins can send messages. */
+  admins_only_messages?: boolean;
   last_message: Message | null;
   draft?: MessageDraft | null;
   unread_count: number;

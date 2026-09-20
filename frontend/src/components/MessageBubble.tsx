@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, CheckCheck, CornerUpLeft, FileText, Forward, Pencil, SmilePlus, Trash2 } from "lucide-react";
 import type { Message } from "@/types";
 import { canEditMessage, formatFileSize, formatMessageTime, getDisplayName, getQuotePreview, MESSAGE_EDIT_WINDOW_MS } from "@/utils/format";
+import MentionText from "./MentionText";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "👏"];
 
@@ -134,14 +135,30 @@ export default function MessageBubble({
         return (
           <div className="message-media">
             <img src={message.file_url || ""} alt={message.file_name} loading="lazy" />
-            {message.content && <p className="message-text">{message.content}</p>}
+            {message.content && (
+              <p className="message-text">
+                <MentionText
+                  content={message.content}
+                  mentions={message.mentions}
+                  mentionEveryone={message.mention_everyone}
+                />
+              </p>
+            )}
           </div>
         );
       case "video":
         return (
           <div className="message-media">
             <video src={message.file_url || ""} controls />
-            {message.content && <p className="message-text">{message.content}</p>}
+            {message.content && (
+              <p className="message-text">
+                <MentionText
+                  content={message.content}
+                  mentions={message.mentions}
+                  mentionEveryone={message.mention_everyone}
+                />
+              </p>
+            )}
           </div>
         );
       case "pdf":
@@ -164,7 +181,15 @@ export default function MessageBubble({
           <audio src={message.file_url || ""} controls style={{ width: "100%", minWidth: 200 }} />
         );
       default:
-        return <p className="message-text">{message.content}</p>;
+        return (
+          <p className="message-text">
+            <MentionText
+              content={message.content}
+              mentions={message.mentions}
+              mentionEveryone={message.mention_everyone}
+            />
+          </p>
+        );
     }
   };
 
@@ -174,7 +199,9 @@ export default function MessageBubble({
 
   return (
     <div
-      className={`message-row ${isSent ? "sent" : "received"}${highlighted ? " search-hit" : ""}`}
+      className={`message-row ${isSent ? "sent" : "received"}${highlighted ? " search-hit" : ""}${
+        message.mentioned_me && !isSent ? " mentioned-me" : ""
+      }`}
       id={`msg-${message.id}`}
     >
       <div

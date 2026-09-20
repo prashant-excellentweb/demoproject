@@ -12,6 +12,7 @@ import GroupInfoPanel from "./GroupInfoPanel";
 import MessageBubble from "./MessageBubble";
 import { formatLastSeen, getDisplayName, getOtherParticipant, getQuotePreview, toMessageQuote } from "@/utils/format";
 import { isGroupAdmin } from "@/utils/group";
+import { findMentionTrigger, getMentionCandidates, type MentionCandidate } from "@/utils/mentions";
 import { reportUser } from "@/utils/report";
 
 interface Props {
@@ -41,6 +42,13 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   const [searchIndex, setSearchIndex] = useState(0);
   const [searching, setSearching] = useState(false);
   const [highlightId, setHighlightId] = useState<number | null>(null);
+  const [mentionedIds, setMentionedIds] = useState<number[]>([]);
+  const [mentionEveryone, setMentionEveryone] = useState(false);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionStart, setMentionStart] = useState(0);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [sendError, setSendError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -112,6 +120,9 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   }, [other, reporting, conversation.id]);
 
   const isBlocked = conversation.is_blocked === true;
+  const isAdmin = isGroupAdmin(conversation, user!.id);
+  const adminsOnlyLocked =
+    conversation.is_group && conversation.admins_only_messages === true && !isAdmin;
 
   const chatName = conversation.is_group
     ? conversation.group_name
@@ -168,6 +179,10 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     setSearchHits([]);
     setSearchIndex(0);
     setHighlightId(focusMessageId ?? null);
+    setMentionedIds([]);
+    setMentionEveryone(false);
+    setMentionOpen(false);
+    setSendError("");
   }, [conversation.id]);
 
   useEffect(() => {
@@ -306,22 +321,54 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     textareaRef.current?.focus();
   };
 
+  const mentionCandidates =
+    conversation.is_group && mentionOpen
+      ? getMentionCandidates(conversation.participants, user!.id, mentionQuery)
+      : [];
+
+  const insertMention = (candidate: MentionCandidate) => {
+    const token = candidate.id === "everyone" ? "everyone" : candidate.display_name;
+    const before = text.slice(0, mentionStart);
+    const cursor = textareaRef.current?.selectionStart ?? text.length;
+    const after = text.slice(cursor);
+    const inserted = `@${token} `;
+    const next = `${before}${inserted}${after}`;
+    setText(next);
+    if (candidate.id === "everyone") {
+      setMentionEveryone(true);
+    } else {
+      setMentionedIds((prev) => Array.from(new Set([...prev, candidate.id as number])));
+    }
+    setMentionOpen(false);
+    window.requestAnimationFrame(() => {
+      const pos = before.length + inserted.length;
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(pos, pos);
+    });
+  };
+
   const handleSend = async () => {
-    if (!text.trim() || sending) return;
+    if (!text.trim() || sending || adminsOnlyLocked) return;
     setSending(true);
     setEmojiOpen(false);
+    setSendError("");
     const form = new FormData();
     form.append("content", text.trim());
     form.append("message_type", "text");
     if (replyTo) form.append("reply_to_id", String(replyTo.id));
+    if (mentionEveryone) form.append("mention_everyone", "true");
+    if (mentionedIds.length) form.append("mentioned_user_ids", mentionedIds.join(","));
     try {
       const res = await chatApi.sendMessage(conversation.id, form);
       appendMessage(res.data);
       setText("");
       setReplyTo(null);
+      setMentionedIds([]);
+      setMentionEveryone(false);
+      setMentionOpen(false);
       onRefreshList();
     } catch (e) {
-      console.error(e);
+      setSendError(e instanceof Error ? e.message : "Failed to send message.");
     } finally {
       setSending(false);
     }
@@ -340,13 +387,16 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     else if (ext === "pdf") type = "pdf";
     form.append("message_type", type);
     if (replyTo) form.append("reply_to_id", String(replyTo.id));
+    if (mentionEveryone) form.append("mention_everyone", "true");
+    if (mentionedIds.length) form.append("mentioned_user_ids", mentionedIds.join(","));
+    setSendError("");
     try {
       const res = await chatApi.sendMessage(conversation.id, form);
       appendMessage(res.data);
       setReplyTo(null);
       onRefreshList();
     } catch (err) {
-      console.error(err);
+      setSendError(err instanceof Error ? err.message : "Failed to send file.");
     } finally {
       setSending(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -354,6 +404,28 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (mentionOpen && mentionCandidates.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex((i) => (i + 1) % mentionCandidates.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((i) => (i - 1 + mentionCandidates.length) % mentionCandidates.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        insertMention(mentionCandidates[mentionIndex] ?? mentionCandidates[0]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionOpen(false);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -363,11 +435,30 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   const handleTextChange = (val: string) => {
     setText(val);
     sendTyping(val.length > 0);
+    if (!conversation.is_group) {
+      setMentionOpen(false);
+      return;
+    }
+    const cursor = textareaRef.current?.selectionStart ?? val.length;
+    const trigger = findMentionTrigger(val, cursor);
+    if (trigger) {
+      setMentionOpen(true);
+      setMentionQuery(trigger.query);
+      setMentionStart(trigger.start);
+      setMentionIndex(0);
+    } else {
+      setMentionOpen(false);
+    }
+    if (!/(^|\s)@(everyone|all)\b/i.test(val)) {
+      setMentionEveryone(false);
+    }
   };
 
   const statusText = other
     ? formatLastSeen(other.last_seen, other.is_online)
-    : `${conversation.participants.length} participants`;
+    : conversation.admins_only_messages
+      ? `${conversation.participants.length} participants · Only admins can send messages`
+      : `${conversation.participants.length} participants`;
 
   return (
     <div className="chat-window">
@@ -517,9 +608,9 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
             canDeleteForEveryone={canDeleteForEveryone(msg)}
             onDelete={handleDeleteMessage}
             onReact={handleReactToMessage}
-            onReply={handleReply}
-            onForward={setForwarding}
-            onEdit={isBlocked ? undefined : handleEditMessage}
+            onReply={isBlocked || adminsOnlyLocked ? undefined : handleReply}
+            onForward={isBlocked || adminsOnlyLocked ? undefined : setForwarding}
+            onEdit={isBlocked || adminsOnlyLocked ? undefined : handleEditMessage}
             highlighted={highlightId === msg.id}
           />
         ))}
@@ -530,8 +621,13 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
         <div className="typing-indicator">{typingUser} is typing...</div>
       )}
 
-      {!isBlocked ? (
+      {adminsOnlyLocked && !isBlocked && (
+        <div className="admins-only-banner">Only admins can send messages in this group.</div>
+      )}
+
+      {!isBlocked && !adminsOnlyLocked ? (
         <div className="composer">
+          {sendError && <div className="composer-error">{sendError}</div>}
           {replyTo && (
             <div className="reply-banner">
               <div className="reply-banner-body">
@@ -543,6 +639,23 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
               <button type="button" className="icon-btn" title="Cancel reply" onClick={clearReply}>
                 <X size={18} />
               </button>
+            </div>
+          )}
+          {mentionOpen && mentionCandidates.length > 0 && (
+            <div className="mention-picker">
+              {mentionCandidates.map((candidate, index) => (
+                <button
+                  key={String(candidate.id)}
+                  type="button"
+                  className={`mention-picker-item${index === mentionIndex ? " active" : ""}`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    insertMention(candidate);
+                  }}
+                >
+                  {candidate.id === "everyone" ? "@everyone" : `@${candidate.display_name}`}
+                </button>
+              ))}
             </div>
           )}
           <div className="message-input-area">
@@ -565,7 +678,15 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
             <div className="message-input-wrapper">
               <textarea
                 ref={textareaRef}
-                placeholder={replyTo ? "Type a reply" : "Type a message"}
+                placeholder={
+                  conversation.is_group
+                    ? replyTo
+                      ? "Type a reply · @ to mention"
+                      : "Type a message · @ to mention"
+                    : replyTo
+                      ? "Type a reply"
+                      : "Type a message"
+                }
                 value={text}
                 onChange={(e) => handleTextChange(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -577,9 +698,13 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
             </button>
           </div>
         </div>
-      ) : (
+      ) : isBlocked ? (
         <div className="message-input-area blocked-input">
           <p>Unblock this chat to send messages.</p>
+        </div>
+      ) : (
+        <div className="message-input-area blocked-input">
+          <p>Only admins can send messages.</p>
         </div>
       )}
     </div>
