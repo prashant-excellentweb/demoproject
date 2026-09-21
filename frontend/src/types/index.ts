@@ -73,6 +73,10 @@ export interface Message {
   mention_everyone?: boolean;
   mentions?: { id: number; display_name: string }[];
   mentioned_me?: boolean;
+  is_view_once?: boolean;
+  view_once_opened?: boolean;
+  view_once_opened_at?: string | null;
+  expires_at?: string | null;
   is_read: boolean;
   is_deleted?: boolean;
   deleted_at?: string | null;
@@ -127,11 +131,32 @@ export interface Conversation {
   is_pinned?: boolean;
   /** When true, only group admins can send messages. */
   admins_only_messages?: boolean;
+  /** off | 24h | 7d | 90d */
+  disappearing_messages?: DisappearingDuration;
   last_message: Message | null;
   draft?: MessageDraft | null;
   unread_count: number;
   created_at: string;
   updated_at: string;
+}
+
+export type DisappearingDuration = "off" | "24h" | "7d" | "90d";
+export type MediaFilterType = "photos" | "videos" | "links" | "docs" | "audio";
+
+export interface GlobalSearchResponse {
+  query: string;
+  contacts: User[];
+  groups: ConversationSearchSummary[];
+  messages: MessageSearchHit[];
+  media: MessageSearchHit[];
+  links: MessageSearchHit[];
+  docs: MessageSearchHit[];
+}
+
+export interface MediaFilterResponse {
+  type: MediaFilterType;
+  results: Message[];
+  has_more: boolean;
 }
 
 export type ChatListFilter = "all" | "unread" | "groups" | "favourites" | "archived" | "blocked";

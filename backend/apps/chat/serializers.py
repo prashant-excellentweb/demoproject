@@ -46,6 +46,7 @@ class MessageSerializer(serializers.ModelSerializer):
     is_edited = serializers.SerializerMethodField()
     mentions = serializers.SerializerMethodField()
     mentioned_me = serializers.SerializerMethodField()
+    view_once_opened = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -65,6 +66,10 @@ class MessageSerializer(serializers.ModelSerializer):
             "mention_everyone",
             "mentions",
             "mentioned_me",
+            "is_view_once",
+            "view_once_opened",
+            "view_once_opened_at",
+            "expires_at",
             "is_read",
             "is_deleted",
             "deleted_at",
@@ -83,6 +88,10 @@ class MessageSerializer(serializers.ModelSerializer):
             "mention_everyone",
             "mentions",
             "mentioned_me",
+            "is_view_once",
+            "view_once_opened",
+            "view_once_opened_at",
+            "expires_at",
             "is_read",
             "is_deleted",
             "deleted_at",
@@ -93,12 +102,18 @@ class MessageSerializer(serializers.ModelSerializer):
         )
 
     def get_file_url(self, obj):
-        if obj.is_deleted or not obj.file:
-            return None
+        from apps.chat.services.view_once_service import ViewOnceService
+
         request = self.context.get("request")
+        viewer = getattr(request, "user", None) if request else None
+        if not ViewOnceService.viewer_may_see_file(obj, viewer):
+            return None
         if request:
             return request.build_absolute_uri(obj.file.url)
         return obj.file.url
+
+    def get_view_once_opened(self, obj):
+        return bool(obj.is_view_once and obj.view_once_opened_at)
 
     def get_reactions(self, obj):
         if obj.is_deleted:
@@ -168,6 +183,12 @@ class MessageSerializer(serializers.ModelSerializer):
             data["mentions"] = []
             data["mentioned_me"] = False
             data["mention_everyone"] = False
+            data["is_view_once"] = False
+            data["view_once_opened"] = False
+            data["expires_at"] = None
+        elif instance.is_view_once:
+            # Never expose raw file path for view-once; only file_url when allowed.
+            data["file"] = None
         return data
 
 
@@ -227,6 +248,7 @@ class ConversationSerializer(serializers.ModelSerializer):
             "is_blocked",
             "is_pinned",
             "admins_only_messages",
+            "disappearing_messages",
             "draft",
             "last_message",
             "unread_count",
@@ -385,6 +407,11 @@ class SendMessageSerializer(serializers.Serializer):
         help_text="Comma-separated or JSON list of mentioned user IDs (groups).",
     )
     mention_everyone = serializers.BooleanField(required=False, default=False)
+    is_view_once = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Send image/video as view once (opens one time for recipient).",
+    )
 
     def validate(self, data):
         msg_type = data.get("message_type", Message.MessageType.TEXT)
@@ -394,7 +421,20 @@ class SendMessageSerializer(serializers.Serializer):
             raise serializers.ValidationError("Text messages require content.")
         if msg_type != Message.MessageType.TEXT and not file:
             raise serializers.ValidationError("Media messages require a file.")
+        if data.get("is_view_once"):
+            if msg_type == Message.MessageType.TEXT and file:
+                # type may still be text until detected; allow and validate later
+                pass
+            elif msg_type not in (Message.MessageType.IMAGE, Message.MessageType.VIDEO) and not file:
+                raise serializers.ValidationError("View once requires an image or video.")
         return data
+
+
+class DisappearingMessagesSerializer(serializers.Serializer):
+    duration = serializers.ChoiceField(
+        choices=Conversation.DisappearingDuration.choices,
+        help_text="off | 24h | 7d | 90d",
+    )
 
 
 class EditMessageSerializer(serializers.Serializer):

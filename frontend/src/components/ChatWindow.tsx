@@ -1,19 +1,40 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Flag, MoreVertical, Paperclip, Phone, Search, Send, Video, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Flag,
+  Images,
+  MoreVertical,
+  Paperclip,
+  Phone,
+  Search,
+  Send,
+  Timer,
+  Video,
+  X,
+} from "lucide-react";
 import { chatApi } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/context/WebSocketContext";
-import type { Conversation, Message, MessageQuote, MessageSearchHit } from "@/types";
+import type { Conversation, DisappearingDuration, Message, MessageQuote, MessageSearchHit } from "@/types";
 import Avatar from "./Avatar";
 import EmojiPicker from "./EmojiPicker";
 import ForwardPicker from "./ForwardPicker";
 import GroupAvatar from "./GroupAvatar";
 import GroupInfoPanel from "./GroupInfoPanel";
+import MediaFilterPanel from "./MediaFilterPanel";
 import MessageBubble from "./MessageBubble";
 import { formatLastSeen, getDisplayName, getOtherParticipant, getQuotePreview, toMessageQuote } from "@/utils/format";
 import { isGroupAdmin } from "@/utils/group";
 import { findMentionTrigger, getMentionCandidates, type MentionCandidate } from "@/utils/mentions";
 import { reportUser } from "@/utils/report";
+
+const DISAPPEARING_OPTIONS: { id: DisappearingDuration; label: string }[] = [
+  { id: "off", label: "Off" },
+  { id: "24h", label: "24 hours" },
+  { id: "7d", label: "7 days" },
+  { id: "90d", label: "90 days" },
+];
 
 interface Props {
   conversation: Conversation;
@@ -24,7 +45,7 @@ interface Props {
 
 export default function ChatWindow({ conversation, onRefreshList, onConversationUpdate, focusMessageId = null }: Props) {
   const { user } = useAuth();
-  const { joinConversation, leaveConversation, sendTyping, markRead, onMessage, onTyping, onMessageDeleted, onMessageUpdated } = useWebSocket();
+  const { joinConversation, leaveConversation, sendTyping, markRead, onMessage, onTyping, onMessageDeleted, onMessageUpdated, onPresence, onConversationUpdated } = useWebSocket();
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [replyTo, setReplyTo] = useState<MessageQuote | null>(null);
@@ -34,8 +55,16 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   const [sending, setSending] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [showMediaPanel, setShowMediaPanel] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [disappearingOpen, setDisappearingOpen] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const [sendViewOnce, setSendViewOnce] = useState(false);
+  const [viewOncePreview, setViewOncePreview] = useState<{ url: string; type: string } | null>(null);
+  const [presenceOverride, setPresenceOverride] = useState<{
+    is_online: boolean;
+    last_seen: string | null;
+  } | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHits, setSearchHits] = useState<MessageSearchHit[]>([]);
@@ -97,6 +126,13 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   const other = conversation.is_group
     ? null
     : getOtherParticipant(conversation, user!.id);
+
+  const otherPresence = other
+    ? {
+        is_online: presenceOverride?.is_online ?? other.is_online,
+        last_seen: presenceOverride?.last_seen ?? other.last_seen,
+      }
+    : null;
 
   const handleUnblock = useCallback(async () => {
     try {
@@ -278,6 +314,14 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
   }, [headerMenuOpen]);
 
   useEffect(() => {
+    setPresenceOverride(null);
+    setShowMediaPanel(false);
+    setDisappearingOpen(false);
+    setSendViewOnce(false);
+    setViewOncePreview(null);
+  }, [conversation.id]);
+
+  useEffect(() => {
     const unsubMsg = onMessage((msg) => {
       if (msg.conversation === conversation.id) {
         if (msg.is_deleted) {
@@ -309,8 +353,47 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
         setTypingUser(null);
       }
     });
-    return () => { unsubMsg(); unsubDeleted(); unsubUpdated(); unsubTyping(); };
-  }, [conversation.id, onMessage, onMessageDeleted, onMessageUpdated, onTyping, markRead, onRefreshList, appendMessage, replaceMessage]);
+    const unsubPresence = onPresence((data) => {
+      if (other && data.user_id === other.id) {
+        setPresenceOverride({ is_online: data.is_online, last_seen: data.last_seen });
+        onConversationUpdate({
+          ...conversation,
+          participants: conversation.participants.map((p) =>
+            p.id === data.user_id
+              ? { ...p, is_online: data.is_online, last_seen: data.last_seen }
+              : p
+          ),
+        });
+      }
+    });
+    const unsubConv = onConversationUpdated((updated) => {
+      if (updated.id === conversation.id) {
+        onConversationUpdate(updated);
+      }
+    });
+    return () => {
+      unsubMsg();
+      unsubDeleted();
+      unsubUpdated();
+      unsubTyping();
+      unsubPresence();
+      unsubConv();
+    };
+  }, [
+    conversation,
+    other,
+    onMessage,
+    onMessageDeleted,
+    onMessageUpdated,
+    onTyping,
+    onPresence,
+    onConversationUpdated,
+    markRead,
+    onRefreshList,
+    onConversationUpdate,
+    appendMessage,
+    replaceMessage,
+  ]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -386,6 +469,9 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     else if (["mp4", "webm", "mov"].includes(ext)) type = "video";
     else if (ext === "pdf") type = "pdf";
     form.append("message_type", type);
+    if (sendViewOnce && (type === "image" || type === "video")) {
+      form.append("is_view_once", "true");
+    }
     if (replyTo) form.append("reply_to_id", String(replyTo.id));
     if (mentionEveryone) form.append("mention_everyone", "true");
     if (mentionedIds.length) form.append("mentioned_user_ids", mentionedIds.join(","));
@@ -394,6 +480,7 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
       const res = await chatApi.sendMessage(conversation.id, form);
       appendMessage(res.data);
       setReplyTo(null);
+      setSendViewOnce(false);
       onRefreshList();
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "Failed to send file.");
@@ -402,6 +489,29 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
+
+  const handleOpenViewOnce = useCallback(async (msg: Message) => {
+    const res = await chatApi.openViewOnce(conversation.id, msg.id);
+    if (res.data.file_url) {
+      setViewOncePreview({
+        url: res.data.file_url,
+        type: res.data.message_type || msg.message_type,
+      });
+    }
+    replaceMessage({ ...res.data, file_url: null, view_once_opened: true });
+  }, [conversation.id, replaceMessage]);
+
+  const handleSetDisappearing = useCallback(async (duration: DisappearingDuration) => {
+    try {
+      const res = await chatApi.setDisappearing(conversation.id, duration);
+      onConversationUpdate(res.data);
+      setDisappearingOpen(false);
+      setHeaderMenuOpen(false);
+    } catch (e) {
+      console.error(e);
+      alert(e instanceof Error ? e.message : "Failed to update disappearing messages.");
+    }
+  }, [conversation.id, onConversationUpdate]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (mentionOpen && mentionCandidates.length > 0) {
@@ -454,17 +564,23 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
     }
   };
 
-  const statusText = other
-    ? formatLastSeen(other.last_seen, other.is_online)
+  const statusText = otherPresence
+    ? formatLastSeen(otherPresence.last_seen, otherPresence.is_online)
     : conversation.admins_only_messages
       ? `${conversation.participants.length} participants · Only admins can send messages`
       : `${conversation.participants.length} participants`;
+  const disappearingLabel =
+    DISAPPEARING_OPTIONS.find((o) => o.id === (conversation.disappearing_messages || "off"))
+      ?.label || "Off";
 
   return (
     <div className="chat-window">
       <div className="chat-header">
         {other ? (
-          <Avatar user={other} size={40} />
+          <Avatar
+            user={{ ...other, is_online: otherPresence!.is_online, last_seen: otherPresence!.last_seen }}
+            size={40}
+          />
         ) : (
           <GroupAvatar
             name={conversation.group_name}
@@ -477,9 +593,14 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
           style={{ flex: 1, cursor: conversation.is_group ? "pointer" : "default" }}
           onClick={() => conversation.is_group && setShowGroupInfo(true)}
         >
-          <h3>{chatName}</h3>
+          <h3>
+            {chatName}
+            {conversation.disappearing_messages && conversation.disappearing_messages !== "off" && (
+              <Timer size={14} className="disappearing-header-icon" title="Disappearing messages on" />
+            )}
+          </h3>
           {(isBlocked || statusText) && (
-            <p className={other?.is_online && !isBlocked ? "online-dot" : ""}>
+            <p className={otherPresence?.is_online && !isBlocked ? "online-dot" : ""}>
               {isBlocked ? "Blocked" : statusText}
             </p>
           )}
@@ -491,6 +612,14 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
           onClick={() => setSearchOpen((o) => !o)}
         >
           <Search size={20} />
+        </button>
+        <button
+          type="button"
+          className={`icon-btn${showMediaPanel ? " active" : ""}`}
+          title="Media, links and docs"
+          onClick={() => setShowMediaPanel((o) => !o)}
+        >
+          <Images size={20} />
         </button>
         <button type="button" className="icon-btn"><Phone size={20} /></button>
         <button type="button" className="icon-btn"><Video size={20} /></button>
@@ -508,12 +637,37 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
           >
             <MoreVertical size={20} />
           </button>
-          {headerMenuOpen && other && (
+          {headerMenuOpen && (
             <div className="chat-header-menu">
-              <button type="button" onClick={handleReportUser} disabled={reporting}>
-                <Flag size={16} />
-                Report user
+              <button
+                type="button"
+                onClick={() => setDisappearingOpen((o) => !o)}
+              >
+                <Timer size={16} />
+                Disappearing messages ({disappearingLabel})
               </button>
+              {disappearingOpen && (
+                <div className="disappearing-submenu">
+                  {DISAPPEARING_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={
+                        (conversation.disappearing_messages || "off") === opt.id ? "active" : ""
+                      }
+                      onClick={() => handleSetDisappearing(opt.id)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {other && (
+                <button type="button" onClick={handleReportUser} disabled={reporting}>
+                  <Flag size={16} />
+                  Report user
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -591,6 +745,37 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
         />
       )}
 
+      {showMediaPanel && (
+        <MediaFilterPanel
+          conversationId={conversation.id}
+          onClose={() => setShowMediaPanel(false)}
+          onJumpToMessage={(id) => {
+            setShowMediaPanel(false);
+            jumpToMessage(id);
+          }}
+        />
+      )}
+
+      {viewOncePreview && (
+        <div className="view-once-overlay" onClick={() => setViewOncePreview(null)}>
+          <div className="view-once-modal" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="icon-btn view-once-close"
+              onClick={() => setViewOncePreview(null)}
+            >
+              <X size={22} />
+            </button>
+            {viewOncePreview.type === "video" ? (
+              <video src={viewOncePreview.url} controls autoPlay />
+            ) : (
+              <img src={viewOncePreview.url} alt="View once" />
+            )}
+            <p>This media can only be viewed once.</p>
+          </div>
+        </div>
+      )}
+
       {isBlocked && (
         <div className="blocked-banner">
           <span>You blocked this chat.</span>
@@ -611,6 +796,7 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
             onReply={isBlocked || adminsOnlyLocked ? undefined : handleReply}
             onForward={isBlocked || adminsOnlyLocked ? undefined : setForwarding}
             onEdit={isBlocked || adminsOnlyLocked ? undefined : handleEditMessage}
+            onOpenViewOnce={isBlocked ? undefined : handleOpenViewOnce}
             highlighted={highlightId === msg.id}
           />
         ))}
@@ -665,14 +851,27 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
               onClose={() => setEmojiOpen(false)}
               onSelect={insertEmoji}
             />
-            <button type="button" className="attach-btn" onClick={() => fileInputRef.current?.click()}>
+            <button
+              type="button"
+              className={`attach-btn${sendViewOnce ? " view-once-on" : ""}`}
+              title={sendViewOnce ? "View once on — attach photo/video" : "Attach"}
+              onClick={() => fileInputRef.current?.click()}
+            >
               <Paperclip size={22} />
             </button>
+            <label className="view-once-toggle" title="Send next photo/video as view once">
+              <input
+                type="checkbox"
+                checked={sendViewOnce}
+                onChange={(e) => setSendViewOnce(e.target.checked)}
+              />
+              View once
+            </label>
             <input
               ref={fileInputRef}
               type="file"
               hidden
-              accept="image/*,video/*,.pdf,.doc,.docx,.txt,.xls,.xlsx"
+              accept="image/*,video/*,.pdf,.doc,.docx,.txt,.xls,.xlsx,audio/*"
               onChange={handleFile}
             />
             <div className="message-input-wrapper">
@@ -685,7 +884,10 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
                       : "Type a message · @ to mention"
                     : replyTo
                       ? "Type a reply"
-                      : "Type a message"
+                      : conversation.disappearing_messages &&
+                          conversation.disappearing_messages !== "off"
+                        ? `Disappearing · ${disappearingLabel}`
+                        : "Type a message"
                 }
                 value={text}
                 onChange={(e) => handleTextChange(e.target.value)}

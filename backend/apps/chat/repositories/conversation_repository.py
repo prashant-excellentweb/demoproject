@@ -230,6 +230,8 @@ class MessageRepository:
         forwarded_from: Message | None = None,
         is_forwarded: bool = False,
         file_size: int | None = None,
+        is_view_once: bool = False,
+        expires_at=None,
     ) -> Message:
         if file_size is None:
             file_size = file.size if file else 0
@@ -244,6 +246,8 @@ class MessageRepository:
             reply_to=reply_to,
             forwarded_from=forwarded_from,
             is_forwarded=is_forwarded,
+            is_view_once=bool(is_view_once),
+            expires_at=expires_at,
         )
         conversation.updated_at = timezone.now()
         conversation.save(update_fields=["updated_at"])
@@ -339,11 +343,13 @@ class MessageRepository:
         conversation: Conversation | None = None,
         before_id: int | None = None,
         limit: int = 30,
+        message_types: list[str] | None = None,
     ):
         """
         Text/file-name search over messages the user can see.
 
         Newest first. `before_id` is a cursor (created_at, id) of the last hit.
+        Optional `message_types` narrows to media buckets (photos, docs, …).
         """
         qs = Message.objects.filter(
             conversation__participants=user,
@@ -351,6 +357,8 @@ class MessageRepository:
         ).exclude(hidden_for__user=user)
         if conversation is not None:
             qs = qs.filter(conversation=conversation)
+        if message_types:
+            qs = qs.filter(message_type__in=message_types)
         qs = qs.filter(Q(content__icontains=query) | Q(file_name__icontains=query))
         if before_id:
             cursor = (
@@ -385,6 +393,89 @@ class MessageRepository:
             )
             .order_by("-created_at", "-id")[:limit]
         )
+
+    @staticmethod
+    def search_link_messages(user: User, query: str, *, limit: int = 30):
+        """Messages whose content contains a URL and matches the query."""
+        qs = (
+            Message.objects.filter(
+                conversation__participants=user,
+                is_deleted=False,
+                message_type=Message.MessageType.TEXT,
+            )
+            .exclude(hidden_for__user=user)
+            .filter(
+                Q(content__icontains="http://") | Q(content__icontains="https://")
+            )
+            .filter(content__icontains=query)
+        )
+        return list(
+            qs.select_related("sender", "conversation")
+            .prefetch_related(
+                Prefetch(
+                    "conversation__participants",
+                    queryset=User.objects.only(
+                        "id",
+                        "display_name",
+                        "phone_number",
+                        "avatar",
+                        "is_online",
+                        "last_seen",
+                        "about",
+                        "profile_photo_privacy",
+                        "about_privacy",
+                        "last_seen_privacy",
+                        "status_privacy",
+                    ),
+                )
+            )
+            .order_by("-created_at", "-id")[:limit]
+        )
+
+    @staticmethod
+    def list_media_messages(
+        conversation: Conversation,
+        user: User,
+        *,
+        media_type: str,
+        before_id: int | None = None,
+        limit: int = 40,
+    ):
+        """Gallery filter: photos | videos | links | docs | audio."""
+        qs = (
+            Message.objects.filter(conversation=conversation, is_deleted=False)
+            .exclude(hidden_for__user=user)
+            .select_related("sender", "conversation")
+        )
+        if media_type == "photos":
+            qs = qs.filter(message_type=Message.MessageType.IMAGE)
+        elif media_type == "videos":
+            qs = qs.filter(message_type=Message.MessageType.VIDEO)
+        elif media_type == "audio":
+            qs = qs.filter(message_type=Message.MessageType.AUDIO)
+        elif media_type == "docs":
+            qs = qs.filter(
+                message_type__in=[Message.MessageType.PDF, Message.MessageType.DOCUMENT]
+            )
+        elif media_type == "links":
+            qs = qs.filter(message_type=Message.MessageType.TEXT).filter(
+                Q(content__icontains="http://") | Q(content__icontains="https://")
+            )
+        else:
+            return []
+
+        if before_id:
+            cursor = (
+                Message.objects.filter(id=before_id)
+                .values("created_at", "id")
+                .first()
+            )
+            if cursor:
+                qs = qs.filter(
+                    Q(created_at__lt=cursor["created_at"])
+                    | Q(created_at=cursor["created_at"], id__lt=cursor["id"])
+                )
+        return list(qs.order_by("-created_at", "-id")[:limit])
 
     @staticmethod
     def mark_as_read(conversation: Conversation, user: User):

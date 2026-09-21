@@ -15,7 +15,7 @@ import {
 import { chatApi } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/context/WebSocketContext";
-import type { ChatListFilter, Conversation, MessageSearchHit } from "@/types";
+import type { ChatListFilter, Conversation, GlobalSearchResponse, MessageSearchHit } from "@/types";
 import Avatar from "./Avatar";
 import GroupAvatar from "./GroupAvatar";
 import StatusBar from "./StatusBar";
@@ -60,10 +60,11 @@ export default function ChatList({
   onConversationsChange,
 }: Props) {
   const { user } = useAuth();
-  const { onMessage, connected } = useWebSocket();
+  const { onMessage, connected, onPresence } = useWebSocket();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [search, setSearch] = useState("");
   const [messageHits, setMessageHits] = useState<MessageSearchHit[]>([]);
+  const [globalHits, setGlobalHits] = useState<GlobalSearchResponse | null>(null);
   const [searchingMessages, setSearchingMessages] = useState(false);
   const [filter, setFilter] = useState<ChatListFilter>("all");
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
@@ -88,6 +89,21 @@ export default function ChatList({
   }, [onMessage, filter]);
 
   useEffect(() => {
+    return onPresence((data) => {
+      setConversations((prev) =>
+        prev.map((c) => ({
+          ...c,
+          participants: c.participants.map((p) =>
+            p.id === data.user_id
+              ? { ...p, is_online: data.is_online, last_seen: data.last_seen }
+              : p
+          ),
+        }))
+      );
+    });
+  }, [onPresence]);
+
+  useEffect(() => {
     if (connected) return;
     const interval = setInterval(() => loadConversations(filter), 5000);
     return () => clearInterval(interval);
@@ -108,15 +124,28 @@ export default function ChatList({
     const q = search.trim();
     if (q.length < 2) {
       setMessageHits([]);
+      setGlobalHits(null);
       setSearchingMessages(false);
       return;
     }
     setSearchingMessages(true);
     const timer = window.setTimeout(() => {
       chatApi
-        .searchAllMessages(q)
-        .then((res) => setMessageHits(res.data.results || []))
-        .catch(console.error)
+        .globalSearch(q)
+        .then((res) => {
+          setGlobalHits(res.data);
+          setMessageHits(res.data.messages || []);
+        })
+        .catch(() => {
+          // Fallback to message-only search if unified endpoint fails
+          chatApi
+            .searchAllMessages(q)
+            .then((res) => {
+              setMessageHits(res.data.results || []);
+              setGlobalHits(null);
+            })
+            .catch(console.error);
+        })
         .finally(() => setSearchingMessages(false));
     }, 300);
     return () => window.clearTimeout(timer);
@@ -268,7 +297,7 @@ export default function ChatList({
         <div className="search-wrapper">
           <Search size={18} />
           <input
-            placeholder="Search chats or messages"
+            placeholder="Search contacts, groups, messages…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -383,9 +412,68 @@ export default function ChatList({
         })}
         {search.trim().length >= 2 && (
           <div className="message-search-section">
+            {globalHits && globalHits.contacts.length > 0 && (
+              <>
+                <h4>Contacts</h4>
+                {globalHits.contacts.map((contact) => (
+                  <div
+                    key={`contact-${contact.id}`}
+                    className="chat-item message-search-hit"
+                    onClick={() => {
+                      chatApi.createDirectChat(contact.id).then((res) => onSelect(res.data));
+                    }}
+                  >
+                    <Avatar user={contact} />
+                    <div className="chat-info">
+                      <div className="chat-info-top">
+                        <span className="chat-name">{getDisplayName(contact)}</span>
+                      </div>
+                      <div className="chat-info-top">
+                        <span className="chat-preview">
+                          {contact.is_online ? "online" : contact.phone_number}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+            {globalHits && globalHits.groups.length > 0 && (
+              <>
+                <h4>Groups</h4>
+                {globalHits.groups.map((g) => {
+                  const fromList = conversations.find((c) => c.id === g.id);
+                  const conv = fromList || conversationFromSearchHit({
+                    id: 0,
+                    conversation: g.id,
+                    sender: user!,
+                    message_type: "text",
+                    content: "",
+                    file_name: "",
+                    snippet: "",
+                    created_at: "",
+                    chat: g,
+                  });
+                  return (
+                    <div
+                      key={`group-${g.id}`}
+                      className="chat-item message-search-hit"
+                      onClick={() => onSelect(conv)}
+                    >
+                      <GroupAvatar name={g.group_name} imageUrl={g.group_avatar_url} />
+                      <div className="chat-info">
+                        <div className="chat-info-top">
+                          <span className="chat-name">{g.name || g.group_name}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
             <h4>Messages</h4>
             {searchingMessages && (
-              <p className="chat-filter-empty">Searching messages…</p>
+              <p className="chat-filter-empty">Searching…</p>
             )}
             {!searchingMessages && messageHits.length === 0 && (
               <p className="chat-filter-empty">No matching messages</p>
@@ -421,6 +509,85 @@ export default function ChatList({
                 </div>
               );
             })}
+            {globalHits && globalHits.media.length > 0 && (
+              <>
+                <h4>Media</h4>
+                {globalHits.media.map((hit) => {
+                  const fromList = conversations.find((c) => c.id === hit.chat.id);
+                  const conv = fromList || conversationFromSearchHit(hit);
+                  return (
+                    <div
+                      key={`media-${hit.id}`}
+                      className="chat-item message-search-hit"
+                      onClick={() => onSelect(conv, hit.id)}
+                    >
+                      <GroupAvatar name={hit.chat.name} imageUrl={hit.chat.group_avatar_url} />
+                      <div className="chat-info">
+                        <div className="chat-info-top">
+                          <span className="chat-name">{hit.chat.name}</span>
+                          <span className="chat-time">{formatChatTime(hit.created_at)}</span>
+                        </div>
+                        <div className="chat-info-top">
+                          <span className="chat-preview">{hit.snippet || hit.file_name}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+            {globalHits && globalHits.links.length > 0 && (
+              <>
+                <h4>Links</h4>
+                {globalHits.links.map((hit) => {
+                  const fromList = conversations.find((c) => c.id === hit.chat.id);
+                  const conv = fromList || conversationFromSearchHit(hit);
+                  return (
+                    <div
+                      key={`link-${hit.id}`}
+                      className="chat-item message-search-hit"
+                      onClick={() => onSelect(conv, hit.id)}
+                    >
+                      <GroupAvatar name={hit.chat.name} imageUrl={hit.chat.group_avatar_url} />
+                      <div className="chat-info">
+                        <div className="chat-info-top">
+                          <span className="chat-name">{hit.chat.name}</span>
+                        </div>
+                        <div className="chat-info-top">
+                          <span className="chat-preview">{hit.snippet}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+            {globalHits && globalHits.docs.length > 0 && (
+              <>
+                <h4>Docs</h4>
+                {globalHits.docs.map((hit) => {
+                  const fromList = conversations.find((c) => c.id === hit.chat.id);
+                  const conv = fromList || conversationFromSearchHit(hit);
+                  return (
+                    <div
+                      key={`doc-${hit.id}`}
+                      className="chat-item message-search-hit"
+                      onClick={() => onSelect(conv, hit.id)}
+                    >
+                      <GroupAvatar name={hit.chat.name} imageUrl={hit.chat.group_avatar_url} />
+                      <div className="chat-info">
+                        <div className="chat-info-top">
+                          <span className="chat-name">{hit.chat.name}</span>
+                        </div>
+                        <div className="chat-info-top">
+                          <span className="chat-preview">{hit.file_name || hit.snippet}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
           </div>
         )}
       </div>

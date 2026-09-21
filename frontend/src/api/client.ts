@@ -2,7 +2,11 @@ import axios, { type AxiosResponse } from "axios";
 import type {
   Conversation,
   ChatListFilter,
+  DisappearingDuration,
   ForwardResult,
+  GlobalSearchResponse,
+  MediaFilterResponse,
+  MediaFilterType,
   Message,
   MessageDraft,
   MessageSearchResponse,
@@ -128,6 +132,18 @@ export const chatApi = {
     api.get<MessageSearchResponse>("/chat/messages/search/", {
       params: { q, before: opts?.before, limit: opts?.limit ?? 30 },
     }),
+  globalSearch: (q: string, opts?: { limit?: number }) =>
+    api.get<GlobalSearchResponse>("/chat/search/", {
+      params: { q, limit: opts?.limit ?? 20 },
+    }),
+  getMedia: (conversationId: number, type: MediaFilterType, opts?: { before?: number; limit?: number }) =>
+    api.get<MediaFilterResponse>(`/chat/conversations/${conversationId}/media/`, {
+      params: { type, before: opts?.before, limit: opts?.limit ?? 40 },
+    }),
+  setDisappearing: (conversationId: number, duration: DisappearingDuration) =>
+    api.patch<Conversation>(`/chat/conversations/${conversationId}/disappearing/`, { duration }),
+  openViewOnce: (conversationId: number, messageId: number) =>
+    api.post<Message>(`/chat/conversations/${conversationId}/messages/${messageId}/view-once/`),
   sendMessage: (conversationId: number, data: FormData) =>
     api.post<Message>(`/chat/conversations/${conversationId}/send/`, data, {
       headers: { "Content-Type": "multipart/form-data" },

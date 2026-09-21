@@ -1,8 +1,7 @@
 import json
 
-from asgiref.sync import async_to_sync
-from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
+from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -98,6 +97,28 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def message_read(self, event):
         await self.send(text_data=json.dumps({"type": "read", **event}))
 
+    async def presence_update(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "presence",
+                    "user_id": event["user_id"],
+                    "is_online": event.get("is_online", False),
+                    "last_seen": event.get("last_seen"),
+                }
+            )
+        )
+
+    async def conversation_updated(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "conversation_updated",
+                    "conversation": event["conversation"],
+                }
+            )
+        )
+
     @database_sync_to_async
     def get_user_from_token(self):
         from urllib.parse import parse_qs
@@ -133,18 +154,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def set_online(self, online: bool):
-        from django.utils import timezone
-        self.user.is_online = online
-        self.user.last_seen = timezone.now()
-        self.user.save(update_fields=["is_online", "last_seen"])
+        from apps.chat.services.presence_service import PresenceService
+
+        PresenceService.set_and_broadcast(self.user, online)
 
 
 def broadcast_new_message(message: Message, request=None):
     """Broadcast a new message to conversation participants via channel layer."""
+    from asgiref.sync import async_to_sync
     from channels.layers import get_channel_layer
 
     channel_layer = get_channel_layer()
     serialized = MessageSerializer(message, context={"request": request}).data
+    # View-once media must not leak file_url over the shared WS payload.
+    if message.is_view_once:
+        serialized["file_url"] = None
+        serialized["file"] = None
 
     async_to_sync(channel_layer.group_send)(
         f"conversation_{message.conversation_id}",
@@ -160,6 +185,7 @@ def broadcast_new_message(message: Message, request=None):
 
 def broadcast_message_deleted(message: Message, request=None):
     """Broadcast message deletion to all conversation participants."""
+    from asgiref.sync import async_to_sync
     from channels.layers import get_channel_layer
 
     channel_layer = get_channel_layer()
@@ -179,6 +205,7 @@ def broadcast_message_deleted(message: Message, request=None):
 
 def broadcast_message_updated(message: Message, request=None):
     """Broadcast message updates (e.g. reactions) to all participants."""
+    from asgiref.sync import async_to_sync
     from channels.layers import get_channel_layer
 
     channel_layer = get_channel_layer()
@@ -193,4 +220,25 @@ def broadcast_message_updated(message: Message, request=None):
         async_to_sync(channel_layer.group_send)(
             f"user_{participant.id}",
             {"type": "message_updated", "message": serialized},
+        )
+
+
+def broadcast_conversation_updated(conversation, request=None):
+    """Notify participants that conversation settings changed (e.g. disappearing)."""
+    from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
+
+    from apps.chat.serializers import ConversationSerializer
+
+    channel_layer = get_channel_layer()
+    for participant in conversation.participants.all():
+        # Serialize per viewer so privacy/favourite flags stay correct when possible.
+        class _Req:
+            user = participant
+
+        ctx_request = request if request and getattr(request, "user", None) == participant else _Req()
+        serialized = ConversationSerializer(conversation, context={"request": ctx_request}).data
+        async_to_sync(channel_layer.group_send)(
+            f"user_{participant.id}",
+            {"type": "conversation_updated", "conversation": serialized},
         )

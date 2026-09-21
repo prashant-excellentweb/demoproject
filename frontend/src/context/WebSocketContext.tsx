@@ -7,14 +7,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Message } from "@/types";
+import type { Conversation, Message } from "@/types";
 
 function getWebSocketUrl(): string {
   if (import.meta.env.VITE_WS_URL) {
     return import.meta.env.VITE_WS_URL;
   }
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  // Use same host as the page so Vite dev proxy forwards /ws -> backend
   return `${protocol}//${window.location.host}/ws/chat/`;
 }
 
@@ -24,6 +23,12 @@ type WSMessageHandler = (message: Message) => void;
 type TypingHandler = (data: { user_id: number; user_name: string; is_typing: boolean }) => void;
 type MessageDeletedHandler = (message: Message) => void;
 type MessageUpdatedHandler = (message: Message) => void;
+type PresenceHandler = (data: {
+  user_id: number;
+  is_online: boolean;
+  last_seen: string | null;
+}) => void;
+type ConversationUpdatedHandler = (conversation: Conversation) => void;
 
 interface WebSocketContextType {
   connected: boolean;
@@ -35,6 +40,8 @@ interface WebSocketContextType {
   onTyping: (handler: TypingHandler) => () => void;
   onMessageDeleted: (handler: MessageDeletedHandler) => () => void;
   onMessageUpdated: (handler: MessageUpdatedHandler) => () => void;
+  onPresence: (handler: PresenceHandler) => () => void;
+  onConversationUpdated: (handler: ConversationUpdatedHandler) => () => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | null>(null);
@@ -46,6 +53,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const typingHandlers = useRef<Set<TypingHandler>>(new Set());
   const deletedHandlers = useRef<Set<MessageDeletedHandler>>(new Set());
   const updatedHandlers = useRef<Set<MessageUpdatedHandler>>(new Set());
+  const presenceHandlers = useRef<Set<PresenceHandler>>(new Set());
+  const conversationUpdatedHandlers = useRef<Set<ConversationUpdatedHandler>>(new Set());
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const connect = useCallback(() => {
@@ -79,6 +88,16 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         updatedHandlers.current.forEach((h) => h(data.message));
       } else if (data.type === "typing") {
         typingHandlers.current.forEach((h) => h(data));
+      } else if (data.type === "presence") {
+        presenceHandlers.current.forEach((h) =>
+          h({
+            user_id: data.user_id,
+            is_online: Boolean(data.is_online),
+            last_seen: data.last_seen ?? null,
+          })
+        );
+      } else if (data.type === "conversation_updated" && data.conversation) {
+        conversationUpdatedHandlers.current.forEach((h) => h(data.conversation));
       }
     };
   }, []);
@@ -122,6 +141,16 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     return () => updatedHandlers.current.delete(handler);
   };
 
+  const onPresence = (handler: PresenceHandler) => {
+    presenceHandlers.current.add(handler);
+    return () => presenceHandlers.current.delete(handler);
+  };
+
+  const onConversationUpdated = (handler: ConversationUpdatedHandler) => {
+    conversationUpdatedHandlers.current.add(handler);
+    return () => conversationUpdatedHandlers.current.delete(handler);
+  };
+
   return (
     <WebSocketContext.Provider
       value={{
@@ -134,6 +163,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         onTyping,
         onMessageDeleted,
         onMessageUpdated,
+        onPresence,
+        onConversationUpdated,
       }}
     >
       {children}

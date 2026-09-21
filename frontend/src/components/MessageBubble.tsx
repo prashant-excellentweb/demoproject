@@ -16,6 +16,7 @@ interface Props {
   onReply?: (message: Message) => void;
   onForward?: (message: Message) => void;
   onEdit?: (message: Message, content: string) => Promise<void> | void;
+  onOpenViewOnce?: (message: Message) => Promise<void> | void;
   highlighted?: boolean;
 }
 
@@ -29,6 +30,7 @@ export default function MessageBubble({
   onReply,
   onForward,
   onEdit,
+  onOpenViewOnce,
   highlighted = false,
 }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -38,6 +40,7 @@ export default function MessageBubble({
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [openingViewOnce, setOpeningViewOnce] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const menuRef = useRef<HTMLDivElement>(null);
   const reactRef = useRef<HTMLDivElement>(null);
@@ -128,6 +131,61 @@ export default function MessageBubble({
   const renderContent = () => {
     if (message.is_deleted) {
       return <p className="message-text message-deleted">This message was deleted</p>;
+    }
+
+    if (message.is_view_once) {
+      if (message.view_once_opened) {
+        return (
+          <p className="message-text view-once-opened">
+            {message.message_type === "video" ? "View once video opened" : "View once photo opened"}
+          </p>
+        );
+      }
+      if (isSent && message.file_url) {
+        // Sender preview until opened
+        if (message.message_type === "video") {
+          return (
+            <div className="message-media view-once-preview">
+              <video src={message.file_url} controls />
+              <span className="view-once-badge">View once</span>
+            </div>
+          );
+        }
+        return (
+          <div className="message-media view-once-preview">
+            <img src={message.file_url} alt={message.file_name} loading="lazy" />
+            <span className="view-once-badge">View once</span>
+          </div>
+        );
+      }
+      if (!isSent && onOpenViewOnce) {
+        return (
+          <button
+            type="button"
+            className="view-once-open-btn"
+            disabled={openingViewOnce}
+            onClick={async () => {
+              setOpeningViewOnce(true);
+              try {
+                await onOpenViewOnce(message);
+              } finally {
+                setOpeningViewOnce(false);
+              }
+            }}
+          >
+            {openingViewOnce
+              ? "Opening…"
+              : message.message_type === "video"
+                ? "Tap to view once video"
+                : "Tap to view once photo"}
+          </button>
+        );
+      }
+      return (
+        <p className="message-text">
+          {message.message_type === "video" ? "View once video" : "View once photo"}
+        </p>
+      );
     }
 
     switch (message.message_type) {
@@ -293,6 +351,9 @@ export default function MessageBubble({
         <div className="message-meta">
           {message.is_edited && !message.is_deleted && (
             <span className="message-edited">edited</span>
+          )}
+          {message.expires_at && !message.is_deleted && (
+            <span className="message-disappearing" title="Disappearing message">⏱</span>
           )}
           <span className="message-time">{formatMessageTime(message.created_at)}</span>
           {isSent && !message.is_deleted && (

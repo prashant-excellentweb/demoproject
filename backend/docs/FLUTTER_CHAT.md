@@ -7,6 +7,7 @@ Related docs:
 - Reply, forward, drafts: [`FLUTTER_REPLY_FORWARD_DRAFT.md`](./FLUTTER_REPLY_FORWARD_DRAFT.md)
 - Edit message (15 min window): [`FLUTTER_EDIT_MESSAGE.md`](./FLUTTER_EDIT_MESSAGE.md)
 - Message search: [`FLUTTER_MESSAGE_SEARCH.md`](./FLUTTER_MESSAGE_SEARCH.md)
+- Presence, disappearing, view once, global search: [`FLUTTER_PRESENCE_DISAPPEARING_SEARCH.md`](./FLUTTER_PRESENCE_DISAPPEARING_SEARCH.md)
 - Group mentions + admins-only: [`FLUTTER_GROUP_MENTIONS_ADMINS.md`](./FLUTTER_GROUP_MENTIONS_ADMINS.md)
 - Swagger UI: `http://localhost:9000/api/docs/`
 

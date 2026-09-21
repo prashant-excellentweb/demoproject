@@ -3,7 +3,12 @@ from rest_framework import status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.views import APIView
 
-from apps.chat.consumers import broadcast_message_deleted, broadcast_message_updated, broadcast_new_message
+from apps.chat.consumers import (
+    broadcast_conversation_updated,
+    broadcast_message_deleted,
+    broadcast_message_updated,
+    broadcast_new_message,
+)
 from apps.chat.models import Conversation, Message
 from apps.chat.repositories.conversation_repository import ConversationRepository, MessageRepository
 from apps.chat.repositories.draft_repository import DraftRepository
@@ -13,6 +18,7 @@ from apps.chat.serializers import (
     CreateDirectChatSerializer,
     CreateGroupSerializer,
     DeleteMessageSerializer,
+    DisappearingMessagesSerializer,
     EditMessageSerializer,
     ForwardMessageSerializer,
     MessageDraftSerializer,
@@ -23,6 +29,8 @@ from apps.chat.serializers import (
     SendMessageSerializer,
     UpdateGroupSerializer,
 )
+from apps.chat.services.disappearing_service import DisappearingMessagesService
+from apps.chat.services.global_search_service import GlobalSearchService, MediaFilterService
 from apps.chat.services.message_search_service import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
@@ -31,8 +39,10 @@ from apps.chat.services.message_search_service import (
 )
 from apps.chat.services.mention_service import MentionService
 from apps.chat.services.message_service import MessageService
+from apps.chat.services.view_once_service import ViewOnceService
 from apps.common.responses import api_error, api_success
 from apps.users.models import User
+from apps.users.serializers import UserPublicSerializer
 
 
 def _get_user_conversation(request, conversation_id):
@@ -343,6 +353,9 @@ class MessageListView(APIView):
         if not ConversationRepository.user_in_conversation(conv, request.user):
             return api_error(message="Access denied.", status_code=status.HTTP_403_FORBIDDEN)
 
+        # Soft-delete any expired disappearing messages before serving history.
+        DisappearingMessagesService.purge_expired(conversation=conv)
+
         around_id = request.query_params.get("around")
         if around_id:
             try:
@@ -402,8 +415,17 @@ class SendMessageView(APIView):
 
         message_type = data.get("message_type", Message.MessageType.TEXT)
         file = data.get("file")
+        is_view_once = bool(data.get("is_view_once"))
         if file and message_type == Message.MessageType.TEXT:
             message_type = MessageRepository.detect_message_type(file.name)
+
+        if is_view_once:
+            try:
+                ViewOnceService.assert_can_send_as_view_once(message_type, file)
+            except ValueError as exc:
+                return api_error(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+
+        expires_at = DisappearingMessagesService.compute_expires_at(conv)
 
         message = MessageRepository.create_message(
             conversation=conv,
@@ -413,6 +435,8 @@ class SendMessageView(APIView):
             file=file,
             file_name=file.name if file else "",
             reply_to=reply_to,
+            is_view_once=is_view_once,
+            expires_at=expires_at,
         )
         mentioned_users, mention_everyone = MentionService.resolve(
             conv,
@@ -792,3 +816,179 @@ class GlobalMessageSearchView(APIView):
             },
             message="Search results fetched.",
         )
+
+
+class UnifiedGlobalSearchView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="Global search: contacts, groups, messages, media, links, docs",
+        parameters=[
+            OpenApiParameter(name="q", type=str, location=OpenApiParameter.QUERY, required=True),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+        ],
+    )
+    def get(self, request):
+        query = MessageSearchService.normalize_query(request.query_params.get("q"))
+        try:
+            limit = int(request.query_params.get("limit") or DEFAULT_LIMIT)
+        except (TypeError, ValueError):
+            limit = DEFAULT_LIMIT
+        limit = max(1, min(limit, MAX_LIMIT))
+
+        result = GlobalSearchService.search(request.user, query, limit=limit)
+        ctx = {"request": request, "query": query}
+        return api_success(
+            data={
+                "query": result["query"],
+                "contacts": UserPublicSerializer(
+                    result["contacts"], many=True, context=ctx
+                ).data,
+                "groups": [
+                    {
+                        "id": g.id,
+                        "is_group": True,
+                        "group_name": g.group_name,
+                        "group_avatar_url": (
+                            request.build_absolute_uri(g.group_avatar.url)
+                            if g.group_avatar
+                            else None
+                        ),
+                        "name": g.group_name or "Group",
+                        "participants": UserPublicSerializer(
+                            list(g.participants.all()), many=True, context=ctx
+                        ).data,
+                    }
+                    for g in result["groups"]
+                ],
+                "messages": MessageSearchHitSerializer(
+                    result["messages"], many=True, context=ctx
+                ).data,
+                "media": MessageSearchHitSerializer(
+                    result["media"], many=True, context=ctx
+                ).data,
+                "links": MessageSearchHitSerializer(
+                    result["links"], many=True, context=ctx
+                ).data,
+                "docs": MessageSearchHitSerializer(
+                    result["docs"], many=True, context=ctx
+                ).data,
+            },
+            message="Search results fetched.",
+        )
+
+
+class DisappearingMessagesView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="Set disappearing messages duration for a chat",
+        request=DisappearingMessagesSerializer,
+        responses={200: ConversationSerializer},
+    )
+    def patch(self, request, conversation_id):
+        conv, error = _get_user_conversation(request, conversation_id)
+        if error:
+            return error
+        serializer = DisappearingMessagesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            conv = DisappearingMessagesService.set_duration(
+                conv, request.user, serializer.validated_data["duration"]
+            )
+        except (PermissionError, ValueError) as exc:
+            code = (
+                status.HTTP_403_FORBIDDEN
+                if isinstance(exc, PermissionError)
+                else status.HTTP_400_BAD_REQUEST
+            )
+            return api_error(message=str(exc), status_code=code)
+        broadcast_conversation_updated(conv, request)
+        return api_success(
+            data=ConversationSerializer(conv, context={"request": request}).data,
+            message="Disappearing messages updated.",
+        )
+
+
+class ViewOnceOpenView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="Open a view-once photo/video (one time)",
+        description=(
+            "Returns a one-time `file_url` and marks the media as opened. "
+            "Subsequent opens fail. Broadcasts `message_updated` to the chat."
+        ),
+    )
+    def post(self, request, conversation_id, message_id):
+        conv, error = _get_user_conversation(request, conversation_id)
+        if error:
+            return error
+        message = (
+            Message.objects.filter(id=message_id, conversation=conv)
+            .exclude(hidden_for__user=request.user)
+            .select_related("sender")
+            .first()
+        )
+        if message is None:
+            return api_error(message="Message not found.", status_code=status.HTTP_404_NOT_FOUND)
+        try:
+            updated, url = ViewOnceService.open_and_return_url(
+                message, request.user, request=request
+            )
+        except PermissionError as exc:
+            return api_error(message=str(exc), status_code=status.HTTP_403_FORBIDDEN)
+        except ValueError as exc:
+            return api_error(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+
+        broadcast_message_updated(updated, request)
+        payload = MessageSerializer(updated, context={"request": request}).data
+        payload["file_url"] = url
+        return api_success(data=payload, message="View once media opened.")
+
+
+class ConversationMediaFilterView(APIView):
+    @extend_schema(
+        tags=["Chat"],
+        summary="List chat media by filter (photos, videos, links, docs, audio)",
+        parameters=[
+            OpenApiParameter(
+                name="type",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                required=True,
+                description="photos | videos | links | docs | audio",
+            ),
+            OpenApiParameter(name="before", type=int, location=OpenApiParameter.QUERY, required=False),
+            OpenApiParameter(name="limit", type=int, location=OpenApiParameter.QUERY, required=False),
+        ],
+        responses={200: MessageSerializer(many=True)},
+    )
+    def get(self, request, conversation_id):
+        conv, error = _get_user_conversation(request, conversation_id)
+        if error:
+            return error
+        media_type = request.query_params.get("type") or "photos"
+        before_id = request.query_params.get("before")
+        try:
+            before_id = int(before_id) if before_id else None
+        except (TypeError, ValueError):
+            before_id = None
+        try:
+            limit = int(request.query_params.get("limit") or 40)
+        except (TypeError, ValueError):
+            limit = 40
+        try:
+            items = MediaFilterService.list_media(
+                conv, request.user, media_type, before_id=before_id, limit=limit
+            )
+        except ValueError as exc:
+            return api_error(message=str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+        return api_success(
+            data={
+                "type": media_type,
+                "results": MessageSerializer(
+                    items, many=True, context={"request": request}
+                ).data,
+                "has_more": len(items) == max(1, min(limit, 50)),
+            },
+            message="Media fetched.",
+        )
+

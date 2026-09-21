@@ -10,7 +10,12 @@ A full-featured WhatsApp-like chat application with SMS OTP login, real-time mes
 - **Status/Stories** — 24-hour expiring text, image, and video statuses
 - **User Profiles** — Display name, about, avatar photo
 - **Privacy controls** — Who can see profile photo, about, last seen, and status (`everyone` / `contacts` / `nobody`)
-- **Online Status** — See who's online and last seen (respects privacy)
+- **Online Status** — Live online / last seen via WebSocket (respects privacy)
+- **Disappearing messages** — Per-chat 24h / 7d / 90d auto-delete
+- **View once media** — Photos and videos that open one time
+- **Global search** — Contacts, groups, messages, media, links, docs
+- **In-chat search** — Find text with prev/next navigation
+- **Media filters** — Photos, Videos, Links, Docs, Audio per chat
 - **Read Receipts** — Message delivery and read indicators
 - **Reply, Forward, Drafts** — Inline quotes, forward to other chats, per-chat unsent drafts
 - **Edit message** — Sender can edit text for 15 minutes; others see an “edited” label

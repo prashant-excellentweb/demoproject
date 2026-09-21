@@ -4,9 +4,11 @@ from apps.chat.views import (
     ArchiveConversationView,
     BlockConversationView,
     ConversationListView,
+    ConversationMediaFilterView,
     CreateDirectChatView,
     CreateGroupView,
     DeleteMessageView,
+    DisappearingMessagesView,
     EditMessageView,
     ForwardMessageView,
     GlobalMessageSearchView,
@@ -19,13 +21,16 @@ from apps.chat.views import (
     RemoveGroupMemberView,
     SendMessageView,
     ToggleFavouriteView,
+    UnifiedGlobalSearchView,
     UpdateGroupView,
+    ViewOnceOpenView,
 )
 
 urlpatterns = [
     path("conversations/", ConversationListView.as_view(), name="conversation-list"),
     path("conversations/direct/", CreateDirectChatView.as_view(), name="create-direct"),
     path("conversations/group/", CreateGroupView.as_view(), name="create-group"),
+    path("search/", UnifiedGlobalSearchView.as_view(), name="unified-global-search"),
     path("messages/search/", GlobalMessageSearchView.as_view(), name="global-message-search"),
     path(
         "conversations/<int:conversation_id>/favourite/",
@@ -47,11 +52,21 @@ urlpatterns = [
         PinConversationView.as_view(),
         name="pin-conversation",
     ),
+    path(
+        "conversations/<int:conversation_id>/disappearing/",
+        DisappearingMessagesView.as_view(),
+        name="disappearing-messages",
+    ),
     path("conversations/<int:conversation_id>/group/", UpdateGroupView.as_view(), name="update-group"),
     path(
         "conversations/<int:conversation_id>/members/<int:user_id>/remove/",
         RemoveGroupMemberView.as_view(),
         name="remove-group-member",
+    ),
+    path(
+        "conversations/<int:conversation_id>/media/",
+        ConversationMediaFilterView.as_view(),
+        name="conversation-media",
     ),
     path("conversations/<int:conversation_id>/messages/", MessageListView.as_view(), name="message-list"),
     path(
@@ -63,6 +78,11 @@ urlpatterns = [
         "conversations/<int:conversation_id>/messages/<int:message_id>/",
         DeleteMessageView.as_view(),
         name="delete-message",
+    ),
+    path(
+        "conversations/<int:conversation_id>/messages/<int:message_id>/view-once/",
+        ViewOnceOpenView.as_view(),
+        name="view-once-open",
     ),
     path(
         "conversations/<int:conversation_id>/messages/<int:message_id>/react/",

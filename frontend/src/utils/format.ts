@@ -46,8 +46,16 @@ export function getMessagePreview(message: {
   content: string;
   file_name?: string;
   is_deleted?: boolean;
+  is_view_once?: boolean;
+  view_once_opened?: boolean;
 }): string {
   if (message.is_deleted) return "This message was deleted";
+  if (message.is_view_once) {
+    if (message.view_once_opened) {
+      return message.message_type === "video" ? "Opened view once video" : "Opened view once photo";
+    }
+    return message.message_type === "video" ? "View once video" : "View once photo";
+  }
   switch (message.message_type) {
     case "image": return "📷 Photo";
     case "video": return "🎥 Video";

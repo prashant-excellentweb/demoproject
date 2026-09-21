@@ -3,6 +3,12 @@ from django.db import models
 
 
 class Conversation(models.Model):
+    class DisappearingDuration(models.TextChoices):
+        OFF = "off", "Off"
+        H24 = "24h", "24 hours"
+        D7 = "7d", "7 days"
+        D90 = "90d", "90 days"
+
     participants = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         related_name="conversations",
@@ -20,6 +26,12 @@ class Conversation(models.Model):
     admins_only_messages = models.BooleanField(
         default=False,
         help_text="When True, only group admins can send messages.",
+    )
+    disappearing_messages = models.CharField(
+        max_length=8,
+        choices=DisappearingDuration.choices,
+        default=DisappearingDuration.OFF,
+        help_text="Auto-delete new messages after this duration (per chat).",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -112,6 +124,23 @@ class Message(models.Model):
         blank=True,
         help_text="Set when the sender edits content within the allowed window.",
     )
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When set, message is auto-deleted after this time (disappearing messages).",
+    )
+    is_view_once = models.BooleanField(
+        default=False,
+        help_text="Image/video that can be opened once by each recipient.",
+    )
+    view_once_opened_at = models.DateTimeField(null=True, blank=True)
+    view_once_opened_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="opened_view_once_messages",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -122,6 +151,8 @@ class Message(models.Model):
             models.Index(fields=["sender", "created_at"]),
             models.Index(fields=["conversation", "is_read"]),
             models.Index(fields=["conversation", "is_deleted"]),
+            models.Index(fields=["expires_at"]),
+            models.Index(fields=["conversation", "message_type", "-created_at"]),
         ]
 
     def __str__(self):

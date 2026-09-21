@@ -1,12 +1,19 @@
 import { useRef, useState } from "react";
-import { Ban, Camera, Flag, Lock, ShieldOff, UserMinus, X } from "lucide-react";
+import { Ban, Camera, Flag, Lock, ShieldOff, Timer, UserMinus, X } from "lucide-react";
 import { chatApi } from "@/api/client";
-import type { Conversation } from "@/types";
+import type { Conversation, DisappearingDuration } from "@/types";
 import Avatar from "./Avatar";
 import GroupAvatar from "./GroupAvatar";
 import { getDisplayName } from "@/utils/format";
 import { isGroupAdmin } from "@/utils/group";
 import { reportUser } from "@/utils/report";
+
+const DISAPPEARING_OPTIONS: { id: DisappearingDuration; label: string }[] = [
+  { id: "off", label: "Off" },
+  { id: "24h", label: "24 hours" },
+  { id: "7d", label: "7 days" },
+  { id: "90d", label: "90 days" },
+];
 
 interface Props {
   conversation: Conversation;
@@ -33,6 +40,10 @@ export default function GroupInfoPanel({
   const [blocking, setBlocking] = useState(false);
   const [adminsOnly, setAdminsOnly] = useState(conversation.admins_only_messages === true);
   const [savingAdminsOnly, setSavingAdminsOnly] = useState(false);
+  const [disappearing, setDisappearing] = useState<DisappearingDuration>(
+    conversation.disappearing_messages || "off"
+  );
+  const [savingDisappearing, setSavingDisappearing] = useState(false);
   const [error, setError] = useState("");
   const avatarRef = useRef<HTMLInputElement>(null);
   const isBlocked = conversation.is_blocked === true;
@@ -115,6 +126,21 @@ export default function GroupInfoPanel({
       setError(err instanceof Error ? err.message : "Failed to update messaging mode.");
     } finally {
       setSavingAdminsOnly(false);
+    }
+  };
+
+  const handleSetDisappearing = async (duration: DisappearingDuration) => {
+    setSavingDisappearing(true);
+    setError("");
+    try {
+      const res = await chatApi.setDisappearing(conversation.id, duration);
+      setDisappearing(res.data.disappearing_messages || "off");
+      onUpdated(res.data);
+      onRefreshList();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update disappearing messages.");
+    } finally {
+      setSavingDisappearing(false);
     }
   };
 
@@ -218,6 +244,25 @@ export default function GroupInfoPanel({
             />
           </label>
         )}
+
+        <div className="group-setting-toggle disappearing-setting">
+          <Timer size={18} />
+          <span>
+            <strong>Disappearing messages</strong>
+            <small>New messages auto-delete after the chosen time.</small>
+          </span>
+          <select
+            value={disappearing}
+            disabled={savingDisappearing}
+            onChange={(e) => handleSetDisappearing(e.target.value as DisappearingDuration)}
+          >
+            {DISAPPEARING_OPTIONS.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <div className="group-members-list">
           <h4>Participants</h4>
