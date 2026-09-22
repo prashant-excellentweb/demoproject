@@ -596,7 +596,9 @@ export default function ChatWindow({ conversation, onRefreshList, onConversation
           <h3>
             {chatName}
             {conversation.disappearing_messages && conversation.disappearing_messages !== "off" && (
-              <Timer size={14} className="disappearing-header-icon" title="Disappearing messages on" />
+              <span title="Disappearing messages on">
+                <Timer size={14} className="disappearing-header-icon" />
+              </span>
             )}
           </h3>
           {(isBlocked || statusText) && (
